@@ -18,11 +18,18 @@ tauri-build = { version = "1.2.1", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "1.2.2", features = [] }
-
+rand = "0.8.4"
+rcnz_market = {version = "0.1.0", registry = "kellnr" }
+BVC = {version = "0.1.6", registry = "kellnr" }
+bose = {version = "1.0.72", registry = "kellnr" }
+unitn_market_2022 = {version = "1.0.10", registry = "kellnr" }
+tokio = { version = "1.24.1", features = ["full"] }
+tracing = "0.1.37"
+tracing-subscriber = "0.3.16"
 [features]
 # by default Tauri runs in production mode
 # when `tauri dev` runs it is executed with `cargo run --no-default-features` if `devPath` is an URL
-default = [ "custom-protocol" ]
+default = ["custom-protocol"]
 # this feature is used for production builds where `devPath` points to the filesystem
 # DO NOT remove this
-custom-protocol = [ "tauri/custom-protocol" ]
+custom-protocol = ["tauri/custom-protocol"]
