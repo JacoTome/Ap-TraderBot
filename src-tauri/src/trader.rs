@@ -1,20 +1,19 @@
 use std::collections::HashMap;
-use tauri::{App, Manager, Window};
 
+use tokio::sync::mpsc;
 use unitn_market_2022::good::good_kind::GoodKind;
+
 #[derive(Debug)]
 pub struct Trader {
     name: String,
     goods: HashMap<GoodKind, f32>,
     // reference to the application
-    app: Window,
 }
 
 impl Trader {
-    pub fn new(name: String, app: Window) -> Self {
+    pub fn new(name: String) -> Self {
         let mut trader = Trader {
             name: name,
-            app: app,
             goods: HashMap::new(),
         };
         trader.goods.insert(GoodKind::EUR, 1000.0);
@@ -24,12 +23,20 @@ impl Trader {
 
         trader
     }
+}
 
-    pub fn get_name(&self) -> String {
-        self.app
-            .emit("trader-name", self.name.clone())
-            .expect("error while emitting event");
-        self.name.clone()
+pub async fn async_process_model(
+    mut input_rx: mpsc::Receiver<String>,
+    output_tx: mpsc::Sender<String>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // send trader name
+    let trader = Trader::new("Trader 1".to_string());
+    while let Some(input) = input_rx.recv().await {
+        let mut output = input;
+        output.push_str(&trader.name);
+        println!("output: {}", output);
+        output_tx.send(output).await?;
     }
-    pub fn run() {}
+
+    Ok(())
 }
