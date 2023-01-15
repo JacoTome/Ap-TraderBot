@@ -13,6 +13,7 @@
     "allowlist": {
       "all": false
     },
+    
     "bundle": {
       "active": true,
       "category": "DeveloperTool",

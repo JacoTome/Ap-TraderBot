@@ -5,6 +5,13 @@ import { listen } from "@tauri-apps/api/event";
 import React from "react";
 function App() {
 	const inputRef = useRef(new Array());
+	// create a ref to a mutable object
+	const traderRef = useRef({
+		name: "",
+		budget: 0,
+		goods: [],
+		earnings: 0,
+	});
 	const [reRender, setReRender] = useState(false);
 	const [outputs, setOutputs] = useState({ value: [] });
 	const [output, setOutput] = useState({ value: "" });
@@ -22,10 +29,20 @@ function App() {
 	// add listener on mount
 	React.useEffect(() => {
 		const unlisten = listen("rs2js", (payload) => {
-			inputRef.current.push({
-				timestamp: new Date(Date.now()),
-				message: payload.payload,
-			});
+			console.log("received", payload);
+			traderRef.current = {
+				name: payload.payload.name,
+				budget: payload.payload.budget,
+				earnings: payload.payload.earnings,
+			};
+			// transform the payload goods object in array
+			let goods = [];
+			for (let key in payload.payload.goods) {
+				goods.push(payload.payload.goods[key]);
+			}
+			traderRef.current.goods = goods;
+
+			console.log("traderRef", traderRef.current);
 			setReRender(!reRender);
 		});
 
@@ -55,14 +72,6 @@ function App() {
 			</div>
 			{/* display divs next to each other */}
 			<div style={{ display: "inline", width: "100%" }}>
-				<div style={{ display: "inline-block", margin: "20px" }}>
-					<h2>Outputs</h2>
-					{outputs.value.map((output) => (
-						<li key={output.timestamp.getTime()}>
-							{output.timestamp.toISOString()} {output.message}
-						</li>
-					))}
-				</div>
 				<div style={{ display: "inline-block" }}>
 					<h2>Inputs: {inputRef.length}</h2>
 					{/* {inputs.map((input) => (
@@ -70,9 +79,9 @@ function App() {
 							{input.timestamp} {input.message}
 						</li>
 					))} */}
-					{inputRef.current.map((input) => (
-						<li key={input.timestamp.getTime()}>
-							{input.timestamp.toISOString()} {input.message}
+					{Object.keys(traderRef.current).map((key) => (
+						<li key={key}>
+							{key} {traderRef.current[key]}
 						</li>
 					))}
 				</div>
