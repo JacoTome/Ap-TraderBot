@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "BVC",
  "bose",
+ "lazy_static",
  "rand 0.8.5",
  "rcnz_market",
  "serde",

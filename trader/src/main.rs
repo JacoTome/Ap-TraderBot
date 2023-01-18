@@ -41,13 +41,12 @@ impl Trader {
 }
 
 pub fn main() {
-    let trader = Trader::new("michele".to_string());
+    let trader = Trader::new("JTrader".to_string());
     // create Markets
     let bose = BoseMarket::new_random();
     let bvc = BVCMarket::new_random();
     let rcnz = RCNZ::new_random();
     // print traderState
-    let state = trader.get_state();
 
     // get goods from markets
     let bose_goods = bose.borrow().get_goods();
@@ -72,28 +71,10 @@ pub fn main() {
         }
     }
 
-    // print markets goods
-    println!("Bose goods:");
-    for good in &bose_goods {
-        println!("{:?}", good);
-    }
-    println!("BVC goods:");
-    for good in &bvc_goods {
-        println!("{:?}", good);
-    }
-    println!("RCNZ goods:");
-    for good in &rcnz_goods {
-        println!("{:?}", good);
-    }
-
     // print best exchange rates
-    println!("Best exchange rates:");
-    for i in 0..4 {
-        println!(
-            "Good: {} | Buy: {} | Sell: {}",
-            bose_goods[i].good_kind.to_string(),
-            best_exchange_rate_buy[i],
-            best_exchange_rate_sell[i]
-        );
+    for _i in 0..10 {
+        println!("TraderState: {:?}", trader.get_state());
+        // wait 1 second
+        std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }
