@@ -8,12 +8,22 @@ use lazy_static::lazy_static;
 use serde::Serialize;
 use std::io::BufRead;
 use std::io::BufReader;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::Sender;
+use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::async_runtime::JoinHandle;
 use tauri::Manager;
+use tracing::info;
+use tracing::warn;
 use tracing_subscriber;
 
 use std::sync::Once;
+
+lazy_static! {
+    static ref MY_CHANNEL: Arc<Mutex<(Sender<String>, Receiver<String>)>> =
+        Arc::new(Mutex::new(std::sync::mpsc::channel::<String>()));
+}
 
 fn get_handler() -> &'static Mutex<JoinHandle<()>> {
     static mut HANDLER: Option<Mutex<JoinHandle<()>>> = None;
@@ -53,34 +63,53 @@ fn rs2js<R: tauri::Runtime>(message: String, manager: &impl Manager<R>) {
 
 #[tauri::command]
 fn close_process() {
-    println!("close_process called");
-    let handler = get_handler().lock().unwrap();
-    println!("handler: {:?}", handler);
-
-    handler.abort();
+    info!("Closing process...");
+    // Check if mutex is available
+    if let Ok(mut mutex) = MY_CHANNEL.try_lock() {
+        match mutex.0.send("close".to_string()) {
+            Ok(_) => {
+                info!("Sent close message");
+            }
+            Err(e) => {
+                info!("Error sending close message: {:?}", e);
+            }
+        }
+    } else {
+        warn!("Mutex is not available")
+    }
 }
 
 #[tauri::command]
 fn js2rs(window: tauri::Window) {
-    print!("js2rs called");
+    println!("Send called");
     let mut command = std::process::Command::new(
         "C:\\Users\\jacot\\Documents\\trader-bot\\trader\\target\\debug\\trader.exe",
     );
 
-    *get_handler().lock().unwrap() = tauri::async_runtime::spawn(async move {
-        let output = command
+    info!("Starting process trader");
+    tauri::async_runtime::spawn(async move {
+        let mut output = command
             .stdout(std::process::Stdio::piped())
             .spawn()
             .unwrap();
 
-        let child_stdout = output.stdout.unwrap();
-        let lines = BufReader::new(child_stdout).lines();
+        // let child_stdout = &mut
+        let lines = BufReader::new(output.stdout.unwrap()).lines();
         for line in lines.into_iter() {
             if let Ok(line) = line {
                 window
-                    .emit_all("rs2js", line)
+                    .emit_all("rs2js", &line)
                     .expect("failed to emit event");
+                if let Ok(msg) = MY_CHANNEL.lock().unwrap().1.try_recv() {
+                    if msg == "close" {
+                        info!("Closing process");
+
+                        return;
+                    }
+                }
             }
         }
     });
+
+    info!("Done");
 }

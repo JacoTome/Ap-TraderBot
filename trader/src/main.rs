@@ -1,6 +1,8 @@
 extern crate BVC;
 extern crate bose;
 extern crate rcnz_market;
+use std::{fmt::format, io::Write};
+
 use bose::market::BoseMarket;
 use rcnz_market::rcnz::RCNZ;
 use unitn_market_2022::{good::good_kind::GoodKind, market::Market};
@@ -72,8 +74,9 @@ pub fn main() {
     }
 
     // print best exchange rates
-    for _i in 0..10 {
-        println!("TraderState: {:?}", trader.get_state());
+    for _i in 0..20 {
+        // check if stdout is available
+        println!("{:?}", trader.get_state());
         // wait 1 second
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
