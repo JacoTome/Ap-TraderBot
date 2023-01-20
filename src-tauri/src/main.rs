@@ -6,6 +6,7 @@
 
 use lazy_static::lazy_static;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::sync::mpsc::Receiver;
@@ -13,24 +14,29 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::async_runtime::JoinHandle;
+use tauri::utils::io;
 use tauri::Manager;
 use tracing::info;
 use tracing::warn;
 use tracing_subscriber;
 
 use std::sync::Once;
+// mod taskHandler;
 
 lazy_static! {
     static ref MY_CHANNEL: Arc<Mutex<(Sender<String>, Receiver<String>)>> =
         Arc::new(Mutex::new(std::sync::mpsc::channel::<String>()));
 }
 
-fn get_handler() -> &'static Mutex<JoinHandle<()>> {
-    static mut HANDLER: Option<Mutex<JoinHandle<()>>> = None;
+fn get_handler() -> &'static Arc<Mutex<JoinHandle<()>>> {
+    static mut HANDLER: Option<Arc<Mutex<JoinHandle<()>>>> = None;
     static HANDLER_ONCE: Once = Once::new();
     unsafe {
-        HANDLER_ONCE
-            .call_once(|| HANDLER = Some(Mutex::new(tauri::async_runtime::spawn(async move {}))));
+        HANDLER_ONCE.call_once(|| {
+            HANDLER = Some(Arc::new(Mutex::new(tauri::async_runtime::spawn(
+                async move {},
+            ))))
+        });
         HANDLER.as_ref().unwrap()
     }
 }
@@ -65,7 +71,18 @@ fn rs2js<R: tauri::Runtime>(message: String, manager: &impl Manager<R>) {
 fn close_process() {
     info!("Closing process...");
     // Check if mutex is available
-    if let Ok(mut mutex) = MY_CHANNEL.try_lock() {
+
+    // if let Ok(mut mutex) = get_handler().try_lock() {
+    //     info!("Mutex is available");
+    //     let handler = mutex.inner();
+    //     println!("Handler: {:?}", handler);
+    //     handler.abort();
+    //     info!("Handler aborted")
+    // } else {
+    //     warn!("Mutex is not available")
+    // }
+
+    if let Ok(mutex) = MY_CHANNEL.try_lock() {
         match mutex.0.send("close".to_string()) {
             Ok(_) => {
                 info!("Sent close message");
@@ -88,7 +105,7 @@ fn js2rs(window: tauri::Window) {
 
     info!("Starting process trader");
     tauri::async_runtime::spawn(async move {
-        let mut output = command
+        let output = command
             .stdout(std::process::Stdio::piped())
             .spawn()
             .unwrap();
@@ -103,7 +120,7 @@ fn js2rs(window: tauri::Window) {
                 if let Ok(msg) = MY_CHANNEL.lock().unwrap().1.try_recv() {
                     if msg == "close" {
                         info!("Closing process");
-
+                        command.stdout(std::process::Stdio::null());
                         return;
                     }
                 }

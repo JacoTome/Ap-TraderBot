@@ -1,7 +1,10 @@
 extern crate BVC;
 extern crate bose;
 extern crate rcnz_market;
-use std::{fmt::format, io::Write};
+use std::{
+    fmt::format,
+    io::{Stderr, Write},
+};
 
 use bose::market::BoseMarket;
 use rcnz_market::rcnz::RCNZ;
@@ -64,7 +67,7 @@ pub fn main() {
         for goods in &markets_goods {
             let exchange_rate_buy = goods[i].exchange_rate_buy;
             let exchange_rate_sell = goods[i].exchange_rate_sell;
-            if exchange_rate_buy > best_exchange_rate_buy[i] {
+            if exchange_rate_buy < best_exchange_rate_buy[i] {
                 best_exchange_rate_buy[i] = exchange_rate_buy;
             }
             if exchange_rate_sell > best_exchange_rate_sell[i] {
@@ -73,10 +76,23 @@ pub fn main() {
         }
     }
 
+    let mut less_good_quantity = vec![0.0, 0.0, 0.0, 0.0];
+    let mut more_good_quantity = vec![0.0, 0.0, 0.0, 0.0];
+    for i in 0..4 {
+        for goods in &markets_goods {
+            let quantity = goods[i].quantity;
+            if quantity < less_good_quantity[i] {
+                less_good_quantity[i] = quantity;
+            }
+            if quantity > more_good_quantity[i] {
+                more_good_quantity[i] = quantity;
+            }
+        }
+    }
+
     // print best exchange rates
     for _i in 0..20 {
-        // check if stdout is available
-        println!("{:?}", trader.get_state());
+        println!("Trader: {:?}", trader.get_state());
         // wait 1 second
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
