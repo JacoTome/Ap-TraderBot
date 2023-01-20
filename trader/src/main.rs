@@ -1,14 +1,9 @@
 extern crate BVC;
 extern crate bose;
 extern crate rcnz_market;
-use std::{
-    fmt::format,
-    io::{Stderr, Write},
-};
-
 use bose::market::BoseMarket;
 use rcnz_market::rcnz::RCNZ;
-use unitn_market_2022::{good::good_kind::GoodKind, market::Market};
+use unitn_market_2022::market::Market;
 use BVC::BVCMarket;
 
 pub struct Trader {
@@ -18,6 +13,7 @@ pub struct Trader {
     budget: f32,
 }
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct TraderState {
     name: String,
     earnings: f32,
@@ -26,7 +22,7 @@ pub struct TraderState {
 
 impl Trader {
     pub fn new(name: String) -> Self {
-        let mut trader = Trader {
+        let trader = Trader {
             name: name,
             earnings: 0.0,
             budget: 10000.0,

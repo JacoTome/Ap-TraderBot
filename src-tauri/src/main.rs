@@ -5,22 +5,17 @@
 )]
 
 use lazy_static::lazy_static;
-use serde::Serialize;
-use std::collections::HashMap;
 use std::io::BufRead;
 use std::io::BufReader;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::Mutex;
-use tauri::async_runtime::JoinHandle;
-use tauri::utils::io;
 use tauri::Manager;
 use tracing::info;
 use tracing::warn;
 use tracing_subscriber;
 
-use std::sync::Once;
 // mod taskHandler;
 
 lazy_static! {
@@ -28,18 +23,18 @@ lazy_static! {
         Arc::new(Mutex::new(std::sync::mpsc::channel::<String>()));
 }
 
-fn get_handler() -> &'static Arc<Mutex<JoinHandle<()>>> {
-    static mut HANDLER: Option<Arc<Mutex<JoinHandle<()>>>> = None;
-    static HANDLER_ONCE: Once = Once::new();
-    unsafe {
-        HANDLER_ONCE.call_once(|| {
-            HANDLER = Some(Arc::new(Mutex::new(tauri::async_runtime::spawn(
-                async move {},
-            ))))
-        });
-        HANDLER.as_ref().unwrap()
-    }
-}
+// fn get_handler() -> &'static Arc<Mutex<JoinHandle<()>>> {
+//     static mut HANDLER: Option<Arc<Mutex<JoinHandle<()>>>> = None;
+//     static HANDLER_ONCE: Once = Once::new();
+//     unsafe {
+//         HANDLER_ONCE.call_once(|| {
+//             HANDLER = Some(Arc::new(Mutex::new(tauri::async_runtime::spawn(
+//                 async move {},
+//             ))))
+//         });
+//         HANDLER.as_ref().unwrap()
+//     }
+// }
 
 // static mut TRADER: Mutex<tauri::async_runtime::JoinHandle<()>> =
 //     Mutex::new(tauri::async_runtime::spawn(async move || return Ok(())));
@@ -53,10 +48,10 @@ fn main() {
 }
 
 // A function that sends a message from Rust to JavaScript via a Tauri Event
-fn rs2js<R: tauri::Runtime>(message: String, manager: &impl Manager<R>) {
-    println!("sending: {:?}", message);
-    manager.emit_all("rs2js", message).unwrap();
-}
+// fn rs2js<R: tauri::Runtime>(message: String, manager: &impl Manager<R>) {
+//     println!("sending: {:?}", message);
+//     manager.emit_all("rs2js", message).unwrap();
+// }
 
 // The Tauri command that gets called when Tauri `invoke` JavaScript API is
 // called
