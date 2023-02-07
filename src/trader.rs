@@ -1,11 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, thread, time::Duration};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use bose::market::BoseMarket;
 use tracing::{error, info};
 use unitn_market_2022::{
     good::{good::Good, good_kind::GoodKind},
     market::{good_label::GoodLabel, Market},
-    subscribe_each_other,
+    subscribe_each_other, wait_one_day,
 };
 
 /*
@@ -75,7 +75,6 @@ impl<'a> Trader<'a> {
                     .expect("Error merging good");
             }
         }
-        self.update_goods_history()
     }
 
     fn update_goods_history(&mut self) {
@@ -102,6 +101,7 @@ impl<'a> Trader<'a> {
         // 1. For each USD, YEN,YUAN, find the best exchange rate for buy;
         let eur = self.goods.get(&GoodKind::EUR).unwrap();
         let mut best_buy = HashMap::<GoodKind, (&str, f32)>::new();
+        let mut wait = false;
         for (name, market) in &self.market {
             let market = market.borrow();
             for (kind, _) in &self.goods {
@@ -112,30 +112,36 @@ impl<'a> Trader<'a> {
                     market.get_name(),
                     market.get_buy_price(*kind, eur.get_qty() / 10.0),
                 );
-                if let Some((_, best_price)) = best_buy.get(kind) {
-                    match price {
-                        Ok(price) => {
-                            if price > *best_price && price < eur.get_qty() / 3.0 {
+
+                match price {
+                    Ok(price) => {
+                        if let Some((_, best_price)) = best_buy.get(kind) {
+                            if price < *best_price && price < eur.get_qty() / 3.0 {
+                                best_buy.insert(*kind, (seller, price));
+                            }
+                        } else {
+                            if price < eur.get_qty() / 3.0 {
                                 best_buy.insert(*kind, (seller, price));
                             }
                         }
-                        Err(e) => {
-                            error!("Error in market {}: {:?}", name, e);
-                        }
                     }
-                } else {
-                    match price {
-                        Ok(price) => {
-                            best_buy.insert(*kind, (seller, price));
-                        }
-                        Err(e) => {
-                            error!("Error in market {}: {:?}", name, e);
-                        }
+                    Err(e) => {
+                        error!("Error in market {}: {:?}", name, e);
                     }
                 }
             }
+            // If i have visited all market and i couldn't find a good to buy, wait one day
+            // don't think that this is the best solution but it's a start
+            if best_buy.len() == 0 {
+                wait = true;
+            }
         }
 
+        if wait {
+            for (_, market) in &self.market {
+                wait_one_day!(market);
+            }
+        }
         info!("Best buy: {:?}", best_buy);
 
         // 2. Lock the best buy for the most expensive good
@@ -177,11 +183,11 @@ impl<'a> Trader<'a> {
         let buy = seller.borrow_mut().buy(token, &mut good_to_pay);
         match buy {
             Ok(good) => {
-                info!("Buy: {:?}", good);
+                info!("Buy: {:?} with price: {:?}", good, price);
                 self.update_goods(good.get_kind(), good.get_qty());
                 self.update_goods(good_to_pay.get_kind(), -*price);
+                self.update_goods_history();
                 self.update_budget_history();
-                info!("Trader status: {}", self.get_trader_status());
             }
             Err(e) => {
                 error!("Cannot buy: {:?}", e);
