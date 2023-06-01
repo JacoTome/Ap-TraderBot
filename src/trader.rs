@@ -94,8 +94,6 @@ impl<'a> Trader<'a> {
     pub fn transaction(&mut self) {
         /*
             1. For each USD, YEN,YUAN, find the best exchange rate for buy;
-
-
         */
 
         // 1. For each USD, YEN,YUAN, find the best exchange rate for buy;
@@ -150,57 +148,94 @@ impl<'a> Trader<'a> {
             .max_by(|(_, (_, price1)), (_, (_, price2))| price1.partial_cmp(price2).unwrap())
             .unwrap()
             .0;
-        let (seller, price) = best_buy.get(most_expensive).unwrap();
-        let seller = self.market.get(seller).unwrap();
-        match seller.borrow_mut().lock_buy(
-            *most_expensive,
-            eur.get_qty() / 10.0,
-            *price,
-            self.name.clone(),
-        ) {
-            Ok(token) => {
-                info!("Locked buy: {:?}", token);
-                self.locked_goods_buy
-                    .entry(*most_expensive)
-                    .or_insert(vec![])
-                    .push(token);
-            }
-            Err(e) => {
-                error!("Cannot lock buy: {:?}", e);
+
+        for (kind, (seller, price)) in &best_buy {
+            let seller = self.market.get(seller).unwrap();
+            match seller.borrow_mut().lock_buy(
+                *kind,
+                eur.get_qty() / 10.0,
+                *price,
+                self.name.clone(),
+            ) {
+                Ok(token) => {
+                    info!("Locked buy: {:?}", token);
+                    self.locked_goods_buy
+                        .entry(*kind)
+                        .or_insert(vec![])
+                        .push(token);
+                }
+                Err(e) => {
+                    error!("Cannot lock buy: {:?}", e);
+                }
             }
         }
+        for (kind, tokens) in &self.locked_goods_buy {
+            info!("Locked goods: {:?}", tokens);
+        }
+
+        // Reset best buy
+        // let (seller, price) = best_buy.get(most_expensive).unwrap();
+        // let seller = self.market.get(seller).unwrap();
+        // match seller.borrow_mut().lock_buy(
+        //     *most_expensive,
+        //     eur.get_qty() / 10.0,
+        //     *price,
+        //     self.name.clone(),
+        // ) {
+        //     Ok(token) => {
+        //         info!("Locked buy: {:?}", token);
+        //         self.locked_goods_buy
+        //             .entry(*most_expensive)
+        //             .or_insert(vec![])
+        //             .push(token);
+        //     }
+        //     Err(e) => {
+        //         error!("Cannot lock buy: {:?}", e);
+        //     }
+        // }
 
         // buy
-        let token = self
-            .locked_goods_buy
-            .get_mut(most_expensive)
-            .unwrap()
-            .pop()
-            .unwrap()
-            .clone();
-        let mut good_to_pay = Good::new(GoodKind::EUR, *price);
+        // let token = self
+        //     .locked_goods_buy
+        //     .get_mut(most_expensive)
+        //     .unwrap()
+        //     .pop()
+        //     .unwrap()
+        //     .clone();
+        // let mut good_to_pay = Good::new(GoodKind::EUR, *price);
 
-        let buy = seller.borrow_mut().buy(token, &mut good_to_pay);
-        match buy {
-            Ok(good) => {
-                info!("Buy: {:?} with price: {:?}", good, price);
-                self.update_goods(good.get_kind(), good.get_qty());
-                self.update_goods(good_to_pay.get_kind(), -*price);
-                self.update_goods_history();
-                self.update_budget_history();
-            }
-            Err(e) => {
-                error!("Cannot buy: {:?}", e);
-            }
-        }
+        // let buy = seller.borrow_mut().buy(token, &mut good_to_pay);
+        // match buy {
+        //     Ok(good) => {
+        //         info!("Buy: {:?} with price: {:?}", good, price);
+        //         self.update_goods(good.get_kind(), good.get_qty());
+        //         self.update_goods(good_to_pay.get_kind(), -*price);
+        //         self.update_goods_history();
+        //         self.update_budget_history();
+        //     }
+        //     Err(e) => {
+        //         error!("Cannot buy: {:?}", e);
+        //     }
+        // }
     }
 
     pub fn get_trader_status(&self) -> String {
         let mut status = String::new();
         status.push_str(&format!("Budget: {}\n", self.budget));
-        for (kind, good) in &self.goods {
-            status.push_str(&format!("{}: {}\n", kind.to_string(), good.get_qty()));
+
+        let mut goods = self
+            .goods
+            .clone()
+            .into_iter()
+            .map(|(kind, good)| (kind, good.get_qty()))
+            .collect::<Vec<_>>();
+
+        goods.sort_by(|(_, qty1), (_, qty2)| qty1.partial_cmp(qty2).unwrap());
+
+        for (kind, qty) in goods {
+            status.push_str(&format!("{}: {}\n", kind.to_string(), qty));
         }
+
         status
     }
 
@@ -208,7 +243,8 @@ impl<'a> Trader<'a> {
         let mut market_goods = HashMap::<String, Vec<GoodLabel>>::new();
         for market in &self.market {
             let market = market.1.borrow();
-            let goods = market.get_goods();
+            let mut goods = market.get_goods();
+            goods.sort_by_key(|good| good.good_kind.to_string());
             market_goods.insert(market.get_name().to_string(), goods);
         }
         market_goods

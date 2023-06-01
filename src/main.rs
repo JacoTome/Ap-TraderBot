@@ -1,12 +1,15 @@
 pub mod trader;
 use std::collections::HashMap;
 
+use csv;
 use eframe::egui;
 use egui::plot::{Line, PlotPoints};
+use itertools::Itertools;
 use trader::Trader;
 use unitn_market_2022::{good::good_kind::GoodKind, market::good_label::GoodLabel};
 fn main() {
     tracing_subscriber::fmt::init();
+
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         "Trader visualization",
@@ -29,6 +32,21 @@ impl<'a> MyApp<'_> {
             market_goods: market_goods,
         }
     }
+
+    fn read_from_file(&mut self) {
+        // Open csv file
+        let mut rdr = csv::Reader::from_path("market.csv").unwrap();
+
+        // Iterate over records
+        for result in rdr.records() {
+            //Check if record is unwrappable
+            if result.is_err() {
+                continue;
+            }
+            let record = result.unwrap();
+            println!("{:?}", record);
+        }
+    }
 }
 
 impl eframe::App for MyApp<'_> {
@@ -39,6 +57,9 @@ impl eframe::App for MyApp<'_> {
                 if ui.button("Make transaction").clicked() {
                     self.trader.transaction();
                     self.market_goods = self.trader.get_market_goods();
+                }
+                if ui.button("Read from file").clicked() {
+                    self.read_from_file();
                 }
                 ui.end_row();
             });
@@ -51,7 +72,11 @@ impl eframe::App for MyApp<'_> {
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             ui.label("Status bar");
             ui.horizontal(|ui| {
-                for (market_name, goods) in &self.market_goods {
+                // sort by market name
+                for (market_name, goods) in self.market_goods
+                    .iter()
+                    .sorted_by(|(market_name1, _), (market_name2, _)| market_name1.cmp(market_name2))
+                {
                     ui.vertical(|ui| {
                         ui.label(market_name);
                         for good in goods {
