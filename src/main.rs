@@ -1,21 +1,12 @@
 use std::collections::HashMap;
-use std::io::Read;
-use std::net;
 
 use csv;
 use eframe::egui;
-use egui::plot::{Bar, BarChart, Line, PlotPoints};
+use egui::{
+    plot::{Bar, BarChart, Line, PlotPoints},
+    Color32,
+};
 use itertools::Itertools;
-// use trader::Trader;
-// use unitn_market_2022::{good::good_kind::GoodKind, market::good_label::GoodLabel};
-
-fn _init_tcp_connection() {
-    // Init tcp connection
-    let mut trader_stream = net::TcpStream::connect("127.0.0.14:6969").unwrap();
-    let mut buffer = [0; 1024];
-    let size = trader_stream.read(&mut buffer).unwrap();
-    let _msg = String::from_utf8_lossy(&buffer[..size]);
-}
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -50,6 +41,16 @@ impl<'a> MyApp {
             goods_to_show,
             graph_choose,
             load_value: 0,
+        }
+    }
+
+    fn init_values(&mut self) {
+        // Init values
+        self.goods = Self::read_from_file();
+        self.goods_to_show.clear();
+        for (key, _value) in self.goods.iter().sorted_by_key(|x| x.0.to_lowercase()) {
+            self.goods_to_show
+                .insert(key.to_string(), (true, vec![0.0]));
         }
     }
 
@@ -91,8 +92,8 @@ impl<'a> MyApp {
 
     fn load_all(&mut self) {
         // Push all goods from self.goods in goods_to_show
-        self.goods_to_show.clear();
         if !self.goods.is_empty() {
+            self.goods_to_show.clear();
             for (key, value) in self.goods.iter_mut() {
                 if value.len() == 0 {
                     continue;
@@ -101,41 +102,46 @@ impl<'a> MyApp {
                         .insert(key.to_string(), (true, value.to_vec()));
                 }
             }
+            self.goods.clear();
         }
-        self.goods.clear();
     }
 
     fn read_from_file() -> HashMap<String, Vec<f64>> {
         // Open csv file
-        let mut rdr = csv::Reader::from_path("../market.csv").unwrap();
+        let mut rdr = csv::Reader::from_path("market.csv").unwrap();
 
         let mut ret_val = HashMap::new();
         // get headers
         {
             let headers = rdr.headers().unwrap();
+            let mut hed_vals = Vec::<String>::new();
             for header in headers {
-                ret_val.insert(header.to_string(), Vec::new());
+                if !(header.to_lowercase() == "iteration" || header == "") {
+                    hed_vals.push(header.to_string());
+                }
+            }
+            hed_vals.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+            for header in hed_vals {
+                ret_val.insert(header, Vec::new());
             }
         }
-        let result_iter = rdr.records();
 
         // Iterate over records
+        let result_iter = rdr.records();
         for result in result_iter {
             //Check if record is unwrappable
-            if result.is_err() {
-                continue;
-            }
-            let record = result.unwrap();
-            // Insert in self.goods iterating on self.goods keys
-            for (index, (_key, value)) in ret_val.iter_mut().enumerate() {
-                // Parse record to f64
-                if record[index].parse::<f64>().is_err() {
-                    continue;
-                } else {
-                    let rec = record[index].parse::<f64>().unwrap();
-                    value.push(rec);
+            if !result.is_err() {
+                let record = result.unwrap();
+                // Insert in self.goods iterating on self.goods keys
+                for (index, (_key, value)) in ret_val.iter_mut().enumerate() {
+                    // Parse record to f64
+                    if record[index].parse::<f64>().is_err() {
+                        continue;
+                    } else {
+                        let rec = record[index].parse::<f64>().unwrap();
+                        value.push(rec);
+                    }
                 }
-                // catch error
             }
         }
 
@@ -145,59 +151,121 @@ impl<'a> MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        /*****************
+           TOP PANEL
+        ******************/
+
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label("Trader visualization");
-                let load_all_button = ui.button("Load all");
-                let load_one_button = ui.button("Load one");
+                ui.set_height(50.0);
+                ui.label(
+                    egui::RichText::new("Trader visualization")
+                        .size(15.0)
+                        .color(Color32::YELLOW),
+                );
 
+                let load_all_button = ui.button("Load all").on_hover_text("Load all values");
                 if load_all_button.clicked() {
                     self.load_all();
                 }
+
+                let load_one_button = ui.button("Load one").on_hover_text("Load one value");
                 if load_one_button.clicked() {
                     self.load_one();
                 }
 
-                ui.end_row();
                 ui.label("Load how many?");
                 let mut val_string = format!("{}", self.load_value);
-
                 let value = ui.add_sized([50.0, 20.0], egui::TextEdit::singleline(&mut val_string));
                 let load_value = ui.button("Load");
                 if value.changed() {
-                    if !val_string.parse::<usize>().is_err() {
+                    if val_string.parse::<usize>().is_ok() {
                         self.load_value = val_string.parse::<usize>().unwrap();
                     }
                 }
                 if load_value.clicked() || ui.input().key_pressed(egui::Key::Enter) {
                     self.load_value(self.load_value);
                 }
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let reset_button = ui.button("Reset");
+                    if reset_button.clicked() {
+                        self.init_values();
+                    }
+                })
+                // Reset button at the end of the row
             });
         });
+
+        /*****************
+           LEFT SIDE PANEL
+        ******************/
+
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
             ui.label("Select goods to show");
             ui.separator();
-            ui.horizontal_wrapped(|ui| {
-                for (key, _value) in self.goods_to_show.clone().iter() {
-                    ui.checkbox(&mut self.goods_to_show.get_mut(key).unwrap().0, key);
-                }
+            ui.vertical_centered(|ui| {
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    let select_all_button = ui.button("Select all");
+                    if select_all_button.clicked() {
+                        for (_key, value) in self.goods_to_show.iter_mut() {
+                            value.0 = true;
+                        }
+                    }
+                    let deselect_all_button = ui.button("Deselect all");
+                    if deselect_all_button.clicked() {
+                        for (_key, value) in self.goods_to_show.iter_mut() {
+                            value.0 = false;
+                        }
+                    }
+                });
+                ui.separator();
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    for (key, _value) in self
+                        .goods_to_show
+                        .clone()
+                        .iter()
+                        .sorted_by_key(|x| x.0.to_lowercase())
+                    {
+                        ui.checkbox(&mut self.goods_to_show.get_mut(key).unwrap().0, key);
+                    }
+                })
             });
         });
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+
+        /*****************
+           BOTTOM PANEL
+        ******************/
+
+        egui::SidePanel::right("status_bar").show(ctx, |ui| {
             ui.label("Status bar");
-            ui.horizontal_wrapped(|ui| {
-                for (key, value) in self.goods_to_show.iter() {
-                    if value.1.last().is_none() {
-                        continue;
-                    } else {
-                        ui.label(format!("{}: {} || \n ", key, value.1.last().unwrap()));
+            ui.set_min_width(150.0);
+            ui.vertical(|ui| {
+                for (key, value) in self
+                    .goods_to_show
+                    .iter()
+                    .sorted_by_key(|x| x.0.to_lowercase())
+                {
+                    if !value.1.last().is_none() {
+                        ui.horizontal(|ui| {
+                            ui.with_layout(egui::Layout::left_to_right(egui::Align::LEFT), |ui| {
+                                ui.set_min_width(50.0);
+                                ui.label(key);
+                            });
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::RIGHT), |ui| {
+                                ui.label(format!("{:.2}", value.1.last().unwrap()));
+                            });
+                        });
                     }
                 }
             });
         });
+
+        /*****************
+           CENTRAL PANEL
+        ******************/
+
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.label("Boh");
-            ui.separator();
             // Top down menu
             ui.menu_button("Choose Graph", |ui| {
                 ui.selectable_value(&mut self.graph_choose, 0, "Plot");
@@ -205,19 +273,26 @@ impl eframe::App for MyApp {
             });
             ui.separator();
 
-            // Plot
             match self.graph_choose {
                 0 => {
                     ui.label("Plot");
                     let _plot = egui::widgets::plot::Plot::new("my_plot").show(ui, |ui| {
-                        for (keys, values) in self.goods_to_show.iter() {
-                            let points = values
-                                .1
-                                .iter()
-                                .enumerate()
-                                .map(|(i, &v)| [i as f64, v])
-                                .collect_vec();
-                            ui.line(Line::new(PlotPoints::new(points)).name(keys));
+                        for (i, (keys, values)) in self.goods_to_show.iter().enumerate() {
+                            if values.0 {
+                                let points = values
+                                    .1
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &v)| [i as f64, v])
+                                    .collect_vec();
+                                ui.line(Line::new(PlotPoints::new(points)).name(keys).color(
+                                    egui::Color32::from_rgb(
+                                        ((i * 1000) % 255) as u8,
+                                        ((i * 900) % 255) as u8,
+                                        ((i * 800) % 255) as u8,
+                                    ),
+                                ));
+                            }
                         }
                     });
                 }
