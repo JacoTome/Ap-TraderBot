@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+#[macro_use]
+extern crate lazy_static;
 
 use csv;
 use eframe::egui;
@@ -7,6 +8,11 @@ use egui::{
     Color32,
 };
 use itertools::Itertools;
+use std::sync::RwLock;
+use std::{collections::HashMap, thread, thread::JoinHandle};
+lazy_static! {
+    pub static ref START_TRADER: RwLock<bool> = false.into();
+}
 
 fn main() {
     tracing_subscriber::fmt::init();
@@ -24,6 +30,7 @@ struct MyApp {
     goods_to_show: HashMap<String, (bool, Vec<f64>)>,
     graph_choose: usize,
     load_value: usize,
+    trader_thread: Option<JoinHandle<()>>,
     // market_goods: HashMap<String, Vec<GoodLabel>>,
 }
 
@@ -36,11 +43,13 @@ impl<'a> MyApp {
         for (key, _value) in goods.iter() {
             goods_to_show.insert(key.to_string(), (true, vec![0.0]));
         }
+
         Self {
             goods,
             goods_to_show,
             graph_choose,
             load_value: 0,
+            trader_thread: None,
         }
     }
 
@@ -106,6 +115,42 @@ impl<'a> MyApp {
         }
     }
 
+    fn set_show(&mut self, kind: i32) {
+        match kind {
+            0 => {
+                for good in self.goods_to_show.iter_mut() {
+                    if good.0.to_lowercase().contains("val") {
+                        good.1 .0 = true;
+                    } else {
+                        good.1 .0 = false;
+                    }
+                }
+            }
+            1 => {
+                for good in self.goods_to_show.iter_mut() {
+                    if good.0.to_lowercase().contains("price") {
+                        good.1 .0 = true;
+                    } else {
+                        good.1 .0 = false;
+                    }
+                }
+            }
+            2 => {
+                for good in self.goods_to_show.iter_mut() {
+                    if !good.0.to_lowercase().contains("val")
+                        && !good.0.to_lowercase().contains("price")
+                    {
+                        good.1 .0 = true;
+                    } else {
+                        good.1 .0 = false;
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
+
     fn read_from_file() -> HashMap<String, Vec<f64>> {
         // Open csv file
         let mut rdr = csv::Reader::from_path("market.csv").unwrap();
@@ -116,7 +161,10 @@ impl<'a> MyApp {
             let headers = rdr.headers().unwrap();
             let mut hed_vals = Vec::<String>::new();
             for header in headers {
-                if !(header.to_lowercase() == "iteration" || header == "") {
+                if !(header.to_lowercase().contains("iteration")
+                    || header.to_lowercase().contains("mean")
+                    || header == "")
+                {
                     hed_vals.push(header.to_string());
                 }
             }
@@ -187,6 +235,33 @@ impl eframe::App for MyApp {
                     self.load_value(self.load_value);
                 }
 
+                let start_button = ui.button("Start/Stop");
+                if start_button.clicked() {
+                    let val = START_TRADER.read().unwrap().to_owned();
+                    *START_TRADER.write().unwrap() = !val;
+                    if START_TRADER.read().unwrap().to_owned() {
+                        if self.trader_thread.is_none() {
+                            self.trader_thread = Some(thread::spawn(move || {
+                                /********************
+                                       TRADER
+                                ********************/
+                                let mut i = 0;
+                                loop {
+                                    if START_TRADER.read().unwrap().to_owned() {
+                                        println!("Start: {}", i);
+                                        i += 1;
+                                    } else {
+                                        println!("Parked");
+                                        thread::park();
+                                    }
+                                }
+                            }));
+                        } else {
+                            self.trader_thread.as_ref().unwrap().thread().unpark();
+                        }
+                    }
+                }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let reset_button = ui.button("Reset");
                     if reset_button.clicked() {
@@ -220,6 +295,20 @@ impl eframe::App for MyApp {
                     }
                 });
                 ui.separator();
+                let mut kind_to_show = 0;
+                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
+                    ui.menu_button("Select kind", |ui| {
+                        if ui.selectable_value(&mut kind_to_show, 0, "Val").clicked()
+                            || ui.selectable_value(&mut kind_to_show, 1, "Price").clicked()
+                            || ui
+                                .selectable_value(&mut kind_to_show, 2, "Quantity")
+                                .clicked()
+                        {
+                            self.set_show(kind_to_show);
+                        }
+                    });
+                });
+
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     for (key, _value) in self
                         .goods_to_show

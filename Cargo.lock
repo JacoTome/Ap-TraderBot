@@ -1789,6 +1789,7 @@ dependencies = [
  "eframe",
  "egui",
  "itertools",
+ "lazy_static",
  "rand",
  "tracing",
  "tracing-subscriber",
