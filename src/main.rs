@@ -1,6 +1,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+use core::time::Duration;
 use csv;
 use eframe::egui;
 use egui::{
@@ -10,8 +11,11 @@ use egui::{
 use itertools::Itertools;
 use std::sync::RwLock;
 use std::{collections::HashMap, thread, thread::JoinHandle};
+
 lazy_static! {
     pub static ref START_TRADER: RwLock<bool> = false.into();
+    pub static ref GOODS_TO_SHOW: RwLock<HashMap<String, (bool, Vec<f64>)>> =
+        RwLock::new(HashMap::new());
 }
 
 fn main() {
@@ -23,6 +27,33 @@ fn main() {
         native_options,
         Box::new(|cc| Box::new(MyApp::new(cc))),
     );
+}
+
+fn insert(key: String, val: f64) {
+    if GOODS_TO_SHOW.read().unwrap().get(&key).is_none() {
+        GOODS_TO_SHOW
+            .write()
+            .unwrap()
+            .insert(key.to_string(), (true, vec![0.0]));
+    } else {
+        GOODS_TO_SHOW
+            .write()
+            .unwrap()
+            .get_mut(&key)
+            .unwrap()
+            .1
+            .push(val);
+    }
+}
+
+fn get_values() -> HashMap<String, (bool, Vec<f64>)> {
+    match GOODS_TO_SHOW.read() {
+        Ok(goods) => goods.clone(),
+        Err(e) => {
+            println!("Error: {}", e);
+            HashMap::new()
+        }
+    }
 }
 
 struct MyApp {
@@ -199,10 +230,11 @@ impl<'a> MyApp {
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        ctx.request_repaint_after(Duration::from_millis(100));
+
         /*****************
            TOP PANEL
         ******************/
-
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.horizontal(|ui| {
                 ui.set_height(50.0);
@@ -246,10 +278,15 @@ impl eframe::App for MyApp {
                                        TRADER
                                 ********************/
                                 let mut i = 0;
+                                println!("Trader started");
                                 loop {
                                     if START_TRADER.read().unwrap().to_owned() {
-                                        println!("Start: {}", i);
                                         i += 1;
+                                        insert(
+                                            "EUR".to_string(),
+                                            rand::random::<f64>() * 100000 as f64,
+                                        );
+                                        thread::sleep(std::time::Duration::from_millis(100));
                                     } else {
                                         println!("Parked");
                                         thread::park();
@@ -364,9 +401,10 @@ impl eframe::App for MyApp {
 
             match self.graph_choose {
                 0 => {
+                    let tmp = get_values();
                     ui.label("Plot");
                     let _plot = egui::widgets::plot::Plot::new("my_plot").show(ui, |ui| {
-                        for (i, (keys, values)) in self.goods_to_show.iter().enumerate() {
+                        for (i, (keys, values)) in tmp.iter().enumerate() {
                             if values.0 {
                                 let points = values
                                     .1
@@ -376,9 +414,9 @@ impl eframe::App for MyApp {
                                     .collect_vec();
                                 ui.line(Line::new(PlotPoints::new(points)).name(keys).color(
                                     egui::Color32::from_rgb(
-                                        ((i * 1000) % 255) as u8,
-                                        ((i * 900) % 255) as u8,
-                                        ((i * 800) % 255) as u8,
+                                        ((i + 5 * 1000) % 255) as u8,
+                                        ((i + 4 * 900) % 255) as u8,
+                                        ((i + 3 * 800) % 255) as u8,
                                     ),
                                 ));
                             }
@@ -387,11 +425,19 @@ impl eframe::App for MyApp {
                 }
                 1 => {
                     ui.label("Bars");
+                    /*
                     let values = self
                         .goods_to_show
                         .iter()
                         .map(|(key, value)| (key, (value.0, *value.1.last().unwrap())))
                         .collect_vec();
+                    */
+                    let tmp = get_values();
+                    let values = tmp
+                        .iter()
+                        .map(|(key, value)| (key, (value.0, *value.1.last().unwrap())))
+                        .collect_vec();
+
                     // Sort values
                     let values = values
                         .into_iter()
