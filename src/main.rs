@@ -1,3 +1,5 @@
+pub mod tra_vis;
+
 #[macro_use]
 extern crate lazy_static;
 
@@ -11,6 +13,7 @@ use egui::{
 use itertools::Itertools;
 use std::sync::RwLock;
 use std::{collections::HashMap, thread, thread::JoinHandle};
+use tra_vis::{DailyData, MarketData, MarketEvents};
 
 lazy_static! {
     pub static ref START_TRADER: RwLock<bool> = false.into();
@@ -62,7 +65,15 @@ struct MyApp {
     graph_choose: usize,
     load_value: usize,
     trader_thread: Option<JoinHandle<()>>,
+    markets_data: Vec<MarketData>,
+    _history_event: Vec<DailyData>,
     // market_goods: HashMap<String, Vec<GoodLabel>>,
+}
+
+impl MarketEvents for MyApp {
+    fn update_data(&mut self, markets: &mut Vec<MarketData>) {
+        self.markets_data = markets.clone();
+    }
 }
 
 impl<'a> MyApp {
@@ -81,6 +92,8 @@ impl<'a> MyApp {
             graph_choose,
             load_value: 0,
             trader_thread: None,
+            markets_data: Vec::new(),
+            _history_event: Vec::new(),
         }
     }
 
@@ -277,11 +290,9 @@ impl eframe::App for MyApp {
                                 /********************
                                        TRADER
                                 ********************/
-                                let mut i = 0;
                                 println!("Trader started");
                                 loop {
                                     if START_TRADER.read().unwrap().to_owned() {
-                                        i += 1;
                                         insert(
                                             "EUR".to_string(),
                                             rand::random::<f64>() * 100000 as f64,
