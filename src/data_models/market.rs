@@ -1,6 +1,8 @@
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Serialize};
 
+use unitn_market_2022::good::good_kind::GoodKind;
+
 #[derive(Copy)]
 pub struct CurrencyData {
     pub eur: f64,
@@ -81,8 +83,8 @@ pub struct DailyData {
     pub event: MarketEvent,
     pub amount_given: f64,
     pub amount_received: f64,
-    pub kind_given: Currency,
-    pub kind_received: Currency,
+    pub kind_given: GoodKind,
+    pub kind_received: GoodKind,
 }
 
 impl Serialize for DailyData {
@@ -138,10 +140,14 @@ impl Clone for DailyCurrencyData {
     }
 }
 
+use std::vec;
+
 pub trait TraderTrait {
-    fn initialize_trader(stratIndex: i32) -> Self;
+    fn initialize_trader(stratIndex: i32) -> Self
+    where
+        Self: Sized;
     fn progess_day(&mut self);
-    fn get_daily_data(&self) -> DailyData;
+    fn get_daily_data(&self) -> vec::Vec<DailyData>;
     fn get_trader_data(&self) -> CurrencyData;
-    fn get_market_data(&self) -> Vec<MarketData>;
+    fn get_market_data(&self) -> vec::Vec<vec::Vec<MarketData>>;
 }

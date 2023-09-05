@@ -5,33 +5,30 @@ pub mod utils;
 #[macro_use]
 extern crate lazy_static;
 use core::time::Duration;
-use csv;
 use eframe::egui;
 use egui::{
     plot::{Bar, BarChart, Line, PlotPoints},
-    Color32,
+    Color32, InnerResponse, Ui, Vec2,
 };
 use itertools::{enumerate, Itertools};
 use std::{
     collections::vec_deque::VecDeque, collections::HashMap, sync::Mutex, thread, thread::JoinHandle,
 };
+use trader::trader_ricca;
 
-use utils::utils::{
-    compare_currencies, compare_dailydata, print_event, print_kind, sum_currencies,
-};
+use utils::utils::{print_event, print_kind};
 
-use crate::trader::main::Trader;
-use data_models::market::{
-    Currency, CurrencyData, DailyCurrencyData, DailyData, MarketData, MarketEvent,
-};
+use crate::{data_models::market::TraderTrait, trader::main::Trader};
+use data_models::market::{CurrencyData, DailyCurrencyData, DailyData, MarketData};
 const STRATEGIES: &'static [&'static str] = &[
     "Default", "Prova1", "Prova2", "Prova3", "Prova4", "Prova5", "Prova6",
 ]; // TODO: INSERT STRATEGIES HERE
-pub type TypeMarket = HashMap<String, Vec<CurrencyData>>;
+use unitn_market_2022::good::good_kind::GoodKind;
+pub type TypeMarket = Vec<Vec<MarketData>>;
 
 lazy_static! {
     pub static ref RUNNING: Mutex<bool> = Mutex::new(false);
-    pub static ref MARKETS: Mutex<TypeMarket> = Mutex::new(HashMap::new());
+    pub static ref MARKETS: Mutex<TypeMarket> = Mutex::new(Vec::new());
     pub static ref TRADER_DATA: Mutex<VecDeque<DailyCurrencyData>> = Mutex::new(VecDeque::new());
     pub static ref SELECTED_STRATEGY: Mutex<String> = Mutex::new(STRATEGIES[0].to_string());
 }
@@ -56,173 +53,40 @@ fn main() {
     );
 }
 
+const STRAT: i32 = 3;
 struct MyApp {
     goods_to_show: (Vec<DailyData>, Vec<CurrencyData>),
-    total_currency: CurrencyData,
     graph_choose: usize,
+    plot_choose: usize,
     load_value: usize,
-    trader_thread: Option<JoinHandle<()>>,
+    traders: (Option<JoinHandle<()>>, Option<JoinHandle<()>>),
     history_daily_data: VecDeque<DailyData>,
     history_currencies: VecDeque<CurrencyData>,
+    markets_data: HashMap<String, Vec<CurrencyData>>,
     index: (bool, usize), // 0 = unchanged, 1 = changed
     index_max: usize,
     // market_goods: HashMap<String, Vec<GoodLabel>>,
 }
 
-impl<'a> MyApp {
+impl MyApp {
     fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         let graph_choose = 0;
+        let plot_choose: usize = 0;
 
         let goods_to_show = (vec![], vec![]);
-
+        //let _trader_maccaccaro;
         Self {
             goods_to_show,
-            total_currency: CurrencyData {
-                eur: 0.0,
-                usd: 0.0,
-                yen: 0.0,
-                yuan: 0.0,
-            },
+            plot_choose,
             graph_choose,
             load_value: 0,
-            trader_thread: None,
+            traders: (None, None),
             history_daily_data: VecDeque::new(),
             history_currencies: VecDeque::new(),
+            markets_data: HashMap::new(),
             index: (true, 0),
             index_max: 0,
         }
-    }
-
-    fn load_value(&mut self, tot: usize) {
-        // Push tot good from self.goods in goods_to_show
-        /*for (key, value) in self.goods.iter_mut() {
-            if value.len() == 0 {
-                continue;
-            } else {
-                if tot > value.len() {
-                    println!("Not enough values in {}", key);
-                    continue;
-                }
-                let val = value.drain(0..tot).collect_vec();
-                if self.goods_to_show.get(key).is_none() {
-                    self.goods_to_show.get_mut(key).unwrap().1.extend(val);
-                } else {
-                    self.goods_to_show.get_mut(key).unwrap().1.extend(val);
-                }
-            }
-        }*/
-    }
-
-    fn load_one(&mut self) {
-        // Push one good from self.goods in goods_to_show at a time
-        /* for (key, value) in self.goods.iter_mut() {
-            if value.len() == 0 {
-                continue;
-            } else {
-                let val = value.remove(0);
-                if self.goods_to_show.get(key).is_none() {
-                    self.goods_to_show.get_mut(key).unwrap().1.push(val);
-                } else {
-                    self.goods_to_show.get_mut(key).unwrap().1.push(val);
-                }
-            }
-        }*/
-    }
-    fn load_all(&mut self) {
-        // Push all goods from self.goods in goods_to_show
-        /* if !self.goods.is_empty() {
-            self.goods_to_show.clear();
-            for (key, value) in self.goods.iter_mut() {
-                if value.len() == 0 {
-                    continue;
-                } else {
-                    self.goods_to_show
-                        .insert(key.to_string(), (true, value.to_vec()));
-                }
-            }
-            self.goods.clear();
-        }*/
-    }
-
-    fn set_show(&mut self, kind: i32) {
-        /* match kind {
-            0 => {
-                for good in self.goods_to_show.iter_mut() {
-                    if good.0.to_lowercase().contains("val") {
-                        good.1 .0 = true;
-                    } else {
-                        good.1 .0 = false;
-                    }
-                }
-            }
-            1 => {
-                for good in self.goods_to_show.iter_mut() {
-                    if good.0.to_lowercase().contains("price") {
-                        good.1 .0 = true;
-                    } else {
-                        good.1 .0 = false;
-                    }
-                }
-            }
-            2 => {
-                for good in self.goods_to_show.iter_mut() {
-                    if !good.0.to_lowercase().contains("val")
-                        && !good.0.to_lowercase().contains("price")
-                    {
-                        good.1 .0 = true;
-                    } else {
-                        good.1 .0 = false;
-                    }
-                }
-            }
-
-            _ => {}
-        }*/
-    }
-
-    fn _read_from_file() -> HashMap<String, Vec<f64>> {
-        // Open csv file
-        let mut rdr = csv::Reader::from_path("market.csv").unwrap();
-
-        let mut ret_val = HashMap::new();
-        // get headers
-        {
-            let headers = rdr.headers().unwrap();
-            let mut hed_vals = Vec::<String>::new();
-            for header in headers {
-                if !(header.to_lowercase().contains("iteration")
-                    || header.to_lowercase().contains("mean")
-                    || header == "")
-                {
-                    hed_vals.push(header.to_string());
-                }
-            }
-            hed_vals.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
-            for header in hed_vals {
-                ret_val.insert(header, Vec::new());
-            }
-        }
-
-        // Iterate over records
-        let result_iter = rdr.records();
-        for result in result_iter {
-            //Check if record is unwrappable
-            if !result.is_err() {
-                let record = result.unwrap();
-                // Insert in self.goods iterating on self.goods keys
-                for (index, (_key, value)) in ret_val.iter_mut().enumerate() {
-                    // Parse record to f64
-                    if record[index].parse::<f64>().is_err() {
-                        continue;
-                    } else {
-                        let rec = record[index].parse::<f64>().unwrap();
-                        value.push(rec);
-                    }
-                }
-            }
-        }
-
-        ret_val
     }
 
     fn get_actual_index(&self) -> usize {
@@ -240,9 +104,9 @@ impl<'a> MyApp {
         if self.index.1 > 0 {
             self.index.0 = false;
             self.index.1 -= 1;
-            println!("Index: {}", self.index.1)
         }
     }
+
     fn plus_one_day(&mut self) {
         if self.index.1 < self.index_max {
             self.index.0 = false;
@@ -266,27 +130,40 @@ impl<'a> MyApp {
                 self.index.1 = self.index_max;
             }
         }
-        // match GOODS_TO_SHOW.read() {
-        //     Ok(goods) => goods.clone(),
-        //     Err(e) => {
-        //         println!("Error: {}", e);
-        //         HashMap::new()
-        //     }
-        // }
     }
+
     fn update_data(&mut self) {
         match TRADER_DATA.lock() {
             Ok(mut data) => {
                 if data.is_empty() {
                     return;
                 }
-                let new_data = data.pop_front().unwrap().clone();
+                while !data.is_empty() {
+                    let new_data = data.pop_front().unwrap().clone();
+                    self.history_currencies
+                        .push_back(new_data.currencies.clone());
+                    self.history_daily_data
+                        .push_back(new_data.daily_data.clone());
+                }
+            }
+            Err(e) => {
+                println!("Error: {}", e);
+                return;
+            }
+        }
 
-                self.total_currency = sum_currencies(&self.total_currency, &new_data.currencies);
-                self.history_currencies
-                    .push_back(new_data.currencies.clone());
-                self.history_daily_data
-                    .push_back(new_data.daily_data.clone());
+        match MARKETS.lock() {
+            Ok(mut data) => {
+                if data.is_empty() {
+                    return;
+                }
+                while !data.is_empty() {
+                    let new_data = data.pop().unwrap().clone();
+                    for data in new_data {
+                        let mut binding = self.markets_data.entry(data.name).or_insert(Vec::new());
+                        binding.push(data.currencies);
+                    }
+                }
             }
             Err(e) => {
                 println!("Error: {}", e);
@@ -325,31 +202,36 @@ impl<'a> MyApp {
                         self.load_value = val_string.parse::<usize>().unwrap();
                     }
                 }
+
                 if load_value.clicked() || ui.input().key_pressed(egui::Key::Enter) {
-                    self.load_value(self.load_value);
+                    todo!();
                 }
 
                 let start_button = ui.button("Start/Stop");
                 if start_button.clicked() {
                     switch_run_pause();
                     self.index.0 = true;
-                    if is_running() {
-                        if self.trader_thread.is_none() {
-                            self.trader_thread = Some(thread::spawn(move || {
+
+                    // Multi trader
+                    match &self.traders.0 {
+                        Some(thread) => {
+                            thread.thread().unpark();
+                        }
+                        None => {
+                            self.traders.0 = Some(thread::spawn(move || {
                                 /********************
                                        TRADER
                                 ********************/
-                                let paused = Mutex::new(false);
                                 let mut trader = Trader::new(
                                     &RUNNING,
-                                    &paused,
                                     &MARKETS,
                                     &TRADER_DATA,
                                     &SELECTED_STRATEGY,
+                                    Box::new(trader_ricca::trader_ricca::initialize_trader(STRAT)),
                                 );
                                 println!("Trader started");
                                 loop {
-                                    if is_running() {
+                                    if trader.is_running() {
                                         trader.pass_one_day();
                                         thread::sleep(std::time::Duration::from_millis(100));
                                     } else {
@@ -358,18 +240,49 @@ impl<'a> MyApp {
                                     }
                                 }
                             }));
-                        } else {
-                            self.trader_thread.as_ref().unwrap().thread().unpark();
                         }
                     }
                 }
+
+                //     if is_running() {
+                //         if self.trader_thread.is_none() {
+                //             self.trader_thread =
+                //                 Some(thread::spawn(move || {
+                //                     /********************
+                //                            TRADER
+                //                     ********************/
+                //                     let paused = Mutex::new(false);
+                //                     let mut trader = Trader::new(
+                //                     &RUNNING,
+                //                     &MARKETS,
+                //                     &TRADER_DATA,
+                //                     &SELECTED_STRATEGY,
+                //                     crate::trader::trader_ricca::trader_struct::initialize_trader(0)
+                //                 );
+                //                     println!("Trader started");
+                //                     loop {
+                //                         if is_running() {
+                //                             trader.pass_one_day();
+                //                             thread::sleep(std::time::Duration::from_millis(100));
+                //                         } else {
+                //                             println!("Parked");
+                //                             thread::park();
+                //                         }
+                //                     }
+                //                 }));
+                //         } else {
+                //             self.trader_thread.as_ref().unwrap().thread().unpark();
+                //         }
+                //     }
+                // }
+
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     let reset_button = ui.button("Reset");
                     if reset_button.clicked() {
-                        self.index.1 = self.index_max;
                         self.index.0 = false;
                     }
                 })
+
                 // Reset button at the end of the row
             });
         })
@@ -395,19 +308,6 @@ impl<'a> MyApp {
                     }
                 });
                 ui.separator();
-                let mut kind_to_show = 0;
-                ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                    ui.menu_button("Select kind", |ui| {
-                        if ui.selectable_value(&mut kind_to_show, 0, "Val").clicked()
-                            || ui.selectable_value(&mut kind_to_show, 1, "Price").clicked()
-                            || ui
-                                .selectable_value(&mut kind_to_show, 2, "Quantity")
-                                .clicked()
-                        {
-                            self.set_show(kind_to_show);
-                        }
-                    });
-                });
 
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                     /* for (key, _value) in self
@@ -449,157 +349,109 @@ impl<'a> MyApp {
                         ui.label(format!("Kind received: "));
                     }
                 }
-                /* for (key, value) in self
-                    .goods_to_show
-                    .iter()
-                    .sorted_by_key(|x| x.0.to_lowercase())
-                {
-                    if !value.1.last().is_none() {
-                        ui.horizontal(|ui| {
-                            ui.with_layout(egui::Layout::left_to_right(egui::Align::LEFT), |ui| {
-                                ui.set_min_width(50.0);
-                                ui.label(key);
-                            });
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::RIGHT), |ui| {
-                                ui.label(format!("{:.2}", value.1.last().unwrap()));
-                            });
-                        });
-                    }
-                }*/
             });
         })
     }
 
-    fn central_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
-        egui::CentralPanel::default().show(ctx, |ui| {
-            // Top down menu
-            ui.menu_button("Choose Graph", |ui| {
-                ui.selectable_value(&mut self.graph_choose, 0, "Plot");
-                ui.selectable_value(&mut self.graph_choose, 1, "Bars");
-            });
-            ui.separator();
-
-            let actual_index = self.get_actual_index();
-
-            match self.graph_choose {
-                0 => {
-                    ui.label("Plot");
-                    self.get_values();
-                    let values = self.goods_to_show.1.clone();
-                    println!(
-                        "Actual index: {}, Index: {}, Max_Index: {}",
-                        actual_index, self.index.1, self.index_max
-                    );
-                    egui::widgets::plot::Plot::new("my_plot").show(ui, |ui| {
-                        for curr in [Currency::EUR, Currency::USD, Currency::YEN, Currency::YUAN] {
-                            match curr {
-                                Currency::EUR => {
-                                    let points = values[..actual_index]
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, &v)| [i as f64, v.eur])
-                                        .collect_vec();
-                                    ui.line(
-                                        Line::new(PlotPoints::new(points)).name(print_kind(curr)),
-                                    );
-                                }
-                                Currency::USD => {
-                                    let points = values
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, &v)| [i as f64, v.usd])
-                                        .collect_vec();
-                                    ui.line(
-                                        Line::new(PlotPoints::new(points)).name(print_kind(curr)),
-                                    );
-                                }
-                                Currency::YEN => {
-                                    let points = values
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, &v)| [i as f64, v.yen])
-                                        .collect_vec();
-                                    ui.line(
-                                        Line::new(PlotPoints::new(points)).name(print_kind(curr)),
-                                    );
-                                }
-                                Currency::YUAN => {
-                                    let points = values
-                                        .iter()
-                                        .enumerate()
-                                        .map(|(i, &v)| [i as f64, v.yuan])
-                                        .collect_vec();
-                                    ui.line(
-                                        Line::new(PlotPoints::new(points)).name(print_kind(curr)),
-                                    );
-                                }
-                            }
-                        }
-                    });
-                }
-                1 => {
-                    ui.label("Bars");
-
-                    let values = self.goods_to_show.1.clone();
-
-                    let mut bars: Vec<Bar> = Vec::new();
-                    for (i, curr) in
-                        enumerate([Currency::EUR, Currency::USD, Currency::YEN, Currency::YUAN])
-                    {
-                        if values.len() == 0 {
-                            break;
-                        }
+    fn show_trader(&mut self, ui: &mut Ui) {
+        let actual_index = self.get_actual_index();
+        match self.graph_choose {
+            0 => {
+                ui.label("Plot");
+                let values = self.goods_to_show.1.clone();
+                egui::widgets::plot::Plot::new("my_plot").show(ui, |ui| {
+                    for curr in [GoodKind::EUR, GoodKind::USD, GoodKind::YEN, GoodKind::YUAN] {
                         match curr {
-                            Currency::EUR => {
-                                let mut bar = egui::widgets::plot::Bar::new(
-                                    i as f64,
-                                    values[actual_index].eur,
-                                );
-                                bar = bar.name(print_kind(curr));
-                                bar = bar.fill(egui::Color32::from_rgb(255, 0, 0));
-                                bars.push(bar);
+                            GoodKind::EUR => {
+                                let points = values[..actual_index]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &v)| [i as f64, v.eur])
+                                    .collect_vec();
+                                ui.line(Line::new(PlotPoints::new(points)).name(print_kind(curr)));
                             }
-                            Currency::USD => {
-                                let mut bar = egui::widgets::plot::Bar::new(
-                                    i as f64,
-                                    values[actual_index].usd,
-                                );
-                                bar = bar.name(print_kind(curr));
-                                bar = bar.fill(egui::Color32::from_rgb(255, 0, 255));
-                                bars.push(bar);
+                            GoodKind::USD => {
+                                let points = values[..actual_index]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &v)| [i as f64, v.usd])
+                                    .collect_vec();
+                                ui.line(Line::new(PlotPoints::new(points)).name(print_kind(curr)));
                             }
-                            Currency::YEN => {
-                                let mut bar = egui::widgets::plot::Bar::new(
-                                    i as f64,
-                                    values[actual_index].yen,
-                                );
-                                bar = bar.name(print_kind(curr));
-                                bar = bar.fill(egui::Color32::from_rgb(255, 255, 0));
-                                bars.push(bar);
+                            GoodKind::YEN => {
+                                let points = values[..actual_index]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &v)| [i as f64, v.yen])
+                                    .collect_vec();
+                                ui.line(Line::new(PlotPoints::new(points)).name(print_kind(curr)));
                             }
-                            Currency::YUAN => {
-                                let mut bar = egui::widgets::plot::Bar::new(
-                                    i as f64,
-                                    values[actual_index].yuan,
-                                );
-                                bar = bar.name(print_kind(curr));
-                                bar = bar.fill(egui::Color32::from_rgb(0, 255, 130));
-                                bars.push(bar);
+                            GoodKind::YUAN => {
+                                let points = values[..actual_index]
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, &v)| [i as f64, v.yuan])
+                                    .collect_vec();
+                                ui.line(Line::new(PlotPoints::new(points)).name(print_kind(curr)));
                             }
                         }
                     }
+                });
+            }
+            1 => {
+                ui.label("Bars");
 
-                    // Sort values
-                    bars.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
+                let values = self.goods_to_show.1.clone();
 
-                    let _plot = egui::widgets::plot::Plot::new("my_plot").show(ui, |ui| {
-                        ui.bar_chart(BarChart::new(bars));
-                    });
+                let mut bars: Vec<Bar> = Vec::new();
+                for (i, curr) in
+                    enumerate([GoodKind::EUR, GoodKind::USD, GoodKind::YEN, GoodKind::YUAN])
+                {
+                    if values.len() == 0 {
+                        break;
+                    }
+                    match curr {
+                        GoodKind::EUR => {
+                            let mut bar =
+                                egui::widgets::plot::Bar::new(i as f64, values[actual_index].eur);
+                            bar = bar.name(print_kind(curr));
+                            bar = bar.fill(egui::Color32::from_rgb(255, 0, 0));
+                            bars.push(bar);
+                        }
+                        GoodKind::USD => {
+                            let mut bar =
+                                egui::widgets::plot::Bar::new(i as f64, values[actual_index].usd);
+                            bar = bar.name(print_kind(curr));
+                            bar = bar.fill(egui::Color32::from_rgb(255, 0, 255));
+                            bars.push(bar);
+                        }
+                        GoodKind::YEN => {
+                            let mut bar =
+                                egui::widgets::plot::Bar::new(i as f64, values[actual_index].yen);
+                            bar = bar.name(print_kind(curr));
+                            bar = bar.fill(egui::Color32::from_rgb(255, 255, 0));
+                            bars.push(bar);
+                        }
+                        GoodKind::YUAN => {
+                            let mut bar =
+                                egui::widgets::plot::Bar::new(i as f64, values[actual_index].yuan);
+                            bar = bar.name(print_kind(curr));
+                            bar = bar.fill(egui::Color32::from_rgb(0, 255, 130));
+                            bars.push(bar);
+                        }
+                    }
                 }
-                _ => {
-                    ui.label("How did you get here?");
-                    println!(
-                        "
+
+                // Sort values
+                bars.sort_by(|a, b| a.value.partial_cmp(&b.value).unwrap());
+
+                egui::widgets::plot::Plot::new("my_plot").show(ui, |ui| {
+                    ui.bar_chart(BarChart::new(bars));
+                });
+            }
+            _ => {
+                println!(
+                    "
              ⣠⣤⣤⣤⣤⣤⣤⣤⣤⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⢀⣴⣿⡿⠛⠉⠙⠛⠛⠛⠛⠻⢿⣿⣷⣤⡀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⣼⣿⠋⠀⠀⠀⠀⠀⠀⠀⢀⣀⣀⠈⢻⣿⣿⡄⠀⠀⠀⠀
@@ -620,14 +472,102 @@ impl<'a> MyApp {
 ⠀⠀⠀⠀⠀⠀⠀⢿⣿⣦⣄⣀⣠⣴⣿⣿⠁⠀⠈⠻⣿⣿⣿⣿⡿⠏⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠈⠛⠻⠿⠿⠿⠿⠋⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
                     "
-                    );
-                }
+                );
+                ui.group(|ui| {
+                    ui.label("Io non esisto");
+                });
+            }
+        }
+    }
+
+    fn show_market(&mut self, ui: &mut Ui) {
+        let actual_index = self.get_actual_index();
+        let values = self.markets_data.clone();
+        ui.horizontal_centered(|ui| {
+            ui.label("Plot");
+            ui.set_max_size(Vec2 {
+                x: 1000.0,
+                y: 500.0,
+            });
+            for (key, value) in values {
+                ui.vertical(|ui| {
+                    ui.set_max_size(Vec2 { x: 500.0, y: 500.0 });
+                    ui.label("Market: ".to_string() + &key);
+                    egui::widgets::plot::Plot::new(key.clone()).show(ui, |ui| {
+                        for curr in [GoodKind::EUR, GoodKind::USD, GoodKind::YEN, GoodKind::YUAN] {
+                            match curr {
+                                GoodKind::EUR => {
+                                    let points = value[..actual_index]
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, &v)| [i as f64, v.eur])
+                                        .collect_vec();
+                                    ui.line(Line::new(PlotPoints::new(points)).name("Eur"));
+                                }
+                                GoodKind::USD => {
+                                    let points = value[..actual_index]
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, &v)| [i as f64, v.usd])
+                                        .collect_vec();
+                                    ui.line(Line::new(PlotPoints::new(points)).name("Usd"));
+                                }
+                                GoodKind::YEN => {
+                                    let points = value[..actual_index]
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, &v)| [i as f64, v.yen])
+                                        .collect_vec();
+                                    ui.line(Line::new(PlotPoints::new(points)).name("Yen"));
+                                }
+                                GoodKind::YUAN => {
+                                    let points = value[..actual_index]
+                                        .iter()
+                                        .enumerate()
+                                        .map(|(i, &v)| [i as f64, v.yuan])
+                                        .collect_vec();
+                                    ui.line(Line::new(PlotPoints::new(points)).name("Yuan"));
+                                }
+                            }
+                        }
+                    });
+                });
+            }
+        });
+    }
+
+    fn central_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            // Top down menu
+            ui.group(|ui| {
+                ui.set_min_size(Vec2::new(200.0, 10.0));
+                ui.set_max_height(20.0);
+                ui.horizontal_top(|ui| {
+                    ui.menu_button("Choose Graph", |ui| {
+                        ui.selectable_value(&mut self.graph_choose, 0, "Plot");
+                        ui.selectable_value(&mut self.graph_choose, 1, "Bars");
+                    });
+
+                    if ui.button("Show Markets").clicked() {
+                        self.plot_choose = 1;
+                    }
+
+                    if ui.button("Show Trader").clicked() {
+                        self.plot_choose = 0;
+                    }
+                })
+            });
+
+            match self.plot_choose {
+                0 => self.show_trader(ui),
+                1 => self.show_market(ui),
+                _ => {}
             }
         })
     }
 }
 
-impl eframe::App for MyApp {
+impl<'a> eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(100));
 

@@ -1,5 +1,5 @@
 use crate::data_models::market::*;
-
+use unitn_market_2022::good::good_kind::GoodKind;
 pub fn compare_currencies(data1: &CurrencyData, data2: &CurrencyData) -> bool {
     data1.eur == data2.eur
         && data1.usd == data2.usd
@@ -25,12 +25,12 @@ pub fn print_event(event: MarketEvent) -> String {
     }
 }
 
-pub fn print_kind(kind: Currency) -> String {
+pub fn print_kind(kind: GoodKind) -> String {
     match kind {
-        Currency::EUR => "EUR".to_string(),
-        Currency::USD => "USD".to_string(),
-        Currency::YEN => "YEN".to_string(),
-        Currency::YUAN => "YUAN".to_string(),
+        GoodKind::EUR => "EUR".to_string(),
+        GoodKind::USD => "USD".to_string(),
+        GoodKind::YEN => "YEN".to_string(),
+        GoodKind::YUAN => "YUAN".to_string(),
     }
 }
 

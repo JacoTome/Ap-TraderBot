@@ -36,7 +36,7 @@ use unitn_market_2022::market::LockBuyError::BidTooLow;
 use unitn_market_2022::{subscribe_each_other, wait_one_day};
 
 // old/wrong crate
-use RCNZ::RCNZ;
+use rcnz_market::rcnz::RCNZ;
 
 const STARTING_EUR: f32 = 500000.0;
 const MAX_DAYS: i32 = 1000;
@@ -55,30 +55,69 @@ pub struct GoodMetadata {
     pub exchange_rate: f32,
 }
 
-pub struct trader_struct {
+pub struct trader_ricca {
     markets: Vec<Rc<RefCell<dyn Market>>>,
     goods: HashMap<GoodKind, GoodMetadata>,
     traders_locked: HashMap<String, trade>,
     day: i32,
     name: String,
-    consecutive_wait: i32,
     not_optimal_counter: i32,
-    last_daily_data: DailyData,
+    last_daily_data: Vec<DailyData>,
+    last_market_data: Vec<Vec<MarketData>>,
+    done: bool,
+    strat_index: i32,
+    end_game_stuck: i32,
 }
 
-impl TraderTrait for trader_struct {
+impl TraderTrait for trader_ricca {
     fn initialize_trader(stratIndex: i32) -> Self {
-        return trader_struct::init_trader(trader_struct::init_markets());
-    }
-    fn progess_day(&mut self) {
-        self.main_strat_day();
+        return trader_ricca::init_trader(trader_ricca::init_markets(), stratIndex);
     }
 
-    fn get_daily_data(&self) -> DailyData {
+    fn progess_day(&mut self) {
+        self.last_daily_data = Vec::new();
+        self.last_market_data = Vec::new();
+
+        match self.strat_index {
+            0 => self.buy_low_sell_high_strat_day(),
+            1 => self.buy_all_of_kind_strat_day(),
+            2 => self.random_buy_strat_day(),
+            3 => self.main_strat_day(),
+            _ => self.main_strat_day(),
+        }
+    }
+
+    fn get_daily_data(&self) -> Vec<DailyData> {
         self.last_daily_data.clone()
     }
 
-    fn get_market_data(&self) -> Vec<MarketData> {
+    fn get_market_data(&self) -> Vec<Vec<MarketData>> {
+        return self.last_market_data.clone();
+    }
+
+    fn get_trader_data(&self) -> CurrencyData {
+        let currency_data = CurrencyData {
+            eur: self.goods.get(&GoodKind::EUR).unwrap().good.get_qty() as f64,
+            usd: self.goods.get(&GoodKind::USD).unwrap().good.get_qty() as f64,
+            yen: self.goods.get(&GoodKind::YEN).unwrap().good.get_qty() as f64,
+            yuan: self.goods.get(&GoodKind::YUAN).unwrap().good.get_qty() as f64,
+        };
+
+        return currency_data;
+    }
+}
+
+pub fn get_default_exchange(goodKind: GoodKind) -> f32 {
+    match goodKind {
+        GoodKind::EUR => 1.,
+        GoodKind::USD => DEFAULT_EUR_USD_EXCHANGE_RATE,
+        GoodKind::YEN => DEFAULT_EUR_YEN_EXCHANGE_RATE,
+        GoodKind::YUAN => DEFAULT_EUR_YUAN_EXCHANGE_RATE,
+    }
+}
+
+impl trader_ricca {
+    pub fn add_market_event(&mut self) {
         let mut data: Vec<MarketData> = Vec::new();
 
         self.markets.iter().enumerate().for_each(|(i, market)| {
@@ -103,61 +142,38 @@ impl TraderTrait for trader_struct {
             });
         });
 
-        return data;
+        self.last_market_data.push(data);
     }
 
-    fn get_trader_data(&self) -> CurrencyData {
-        let mut currency_data = CurrencyData {
-            eur: self.goods.get(&GoodKind::EUR).unwrap().good.get_qty() as f64,
-            usd: self.goods.get(&GoodKind::USD).unwrap().good.get_qty() as f64,
-            yen: self.goods.get(&GoodKind::YEN).unwrap().good.get_qty() as f64,
-            yuan: self.goods.get(&GoodKind::YUAN).unwrap().good.get_qty() as f64,
-        };
-
-        return currency_data;
-    }
-}
-
-pub fn get_default_exchange(goodKind: GoodKind) -> f32 {
-    match goodKind {
-        GoodKind::EUR => 1.,
-        GoodKind::USD => DEFAULT_EUR_USD_EXCHANGE_RATE,
-        GoodKind::YEN => DEFAULT_EUR_YEN_EXCHANGE_RATE,
-        GoodKind::YUAN => DEFAULT_EUR_YUAN_EXCHANGE_RATE,
-    }
-}
-
-impl trader_struct {
     pub fn init_markets() -> Vec<Rc<RefCell<dyn Market>>> {
         let mut markets: Vec<Rc<RefCell<dyn Market>>> = Vec::new();
 
         markets.push((BVCMarket::new_random()));
         markets.push((BoseMarket::new_random()));
-        markets.push((RCNZ::new_random()));
+        //markets.push((RCNZ::new_random()));
 
-        subscribe_each_other!(markets[0], markets[1], markets[2]);
-        //subscribe_each_other!(markets[0], markets[1]);
+        //subscribe_each_other!(markets[0], markets[1], markets[2]);
+        subscribe_each_other!(markets[0], markets[1]);
 
         markets
     }
 
-    pub fn init_trader(markets: Vec<Rc<RefCell<dyn Market>>>) -> trader_struct {
-        let mut trader = trader_struct {
+    pub fn init_trader(markets: Vec<Rc<RefCell<dyn Market>>>, strat_index: i32) -> trader_ricca {
+        let mut trader = trader_ricca {
             markets: markets,
             goods: HashMap::new(),
             traders_locked: HashMap::new(),
             day: 0,
             name: String::from("Emanuele"),
-            consecutive_wait: 0,
+            end_game_stuck: 0,
             not_optimal_counter: 0,
-            last_daily_data: DailyData {
-                event: MarketEvent::Wait,
-                amount_given: 0.,
-                amount_received: 0.,
-                kind_given: GoodKind::EUR,
-                kind_received: GoodKind::EUR,
-            },
+            last_daily_data: Vec::new(),
+            last_market_data: Vec::new(),
+            done: false,
+            strat_index: strat_index,
         };
+
+        trader.add_market_event();
 
         trader.goods.insert(
             GoodKind::EUR,
@@ -191,6 +207,148 @@ impl trader_struct {
         trader
     }
 
+    pub fn buy_low_sell_high_strat_day(&mut self) {
+        if (self.day < MAX_DAYS) {
+            let starting_eur = self.goods.get(&GoodKind::EUR).unwrap().good.get_qty();
+
+            self.buy_low_sell_high_strat();
+
+            let ending_eur = self.goods.get(&GoodKind::EUR).unwrap().good.get_qty();
+
+            if !(starting_eur < ending_eur) {
+                if self.not_optimal_counter > 5 {
+                    self.sell_all_strat();
+                    self.not_optimal_counter = 0;
+                }
+
+                println!("--------------------------------------------\nWAIT\n--------------------------------------------");
+                wait_one_day!(self.markets[0], self.markets[1]);
+
+                //print all goods
+                println!("------------------------------------");
+                self.goods.iter().for_each(|(k, v)| {
+                    println!("Good: {:?}, quantity: {}", k, v.good.get_qty());
+                });
+                println!("------------------------------------");
+
+                self.not_optimal_counter += 1;
+            } else {
+                //print all goods
+                println!("------------------------------------");
+                self.goods.iter().for_each(|(k, v)| {
+                    println!("Good: {:?}, quantity: {}", k, v.good.get_qty());
+                });
+                println!("------------------------------------");
+                self.not_optimal_counter = 0;
+            }
+        } else if (self.day >= MAX_DAYS && !self.done) {
+            while (!self.done) {
+                self.sell_all_strat();
+                if !(self.other_than_EUR()) {
+                    self.done = true;
+                }
+            }
+        } else {
+            self.last_daily_data.push(DailyData {
+                event: MarketEvent::Wait,
+                amount_given: 0.,
+                amount_received: 0.,
+                kind_given: GoodKind::EUR,
+                kind_received: GoodKind::EUR,
+            });
+            self.add_market_event();
+        }
+    }
+
+    pub fn buy_all_of_kind_strat_day(&mut self) {
+        if (self.day < MAX_DAYS) {
+            if self.not_optimal_counter > 5 {
+                self.sell_all_strat();
+                self.not_optimal_counter = 0;
+            }
+
+            let mut rng = rand::thread_rng();
+            let random_f32: f32 = rng.gen();
+            if random_f32 < 0.8 {
+                println!("--------------------------------------------\nBUY ALL OF KIND\n--------------------------------------------");
+
+                self.buy_all_of_kind_strat(0.2);
+            } else {
+                println!("--------------------------------------------\nWAIT\n--------------------------------------------");
+                wait_one_day!(self.markets[0], self.markets[1]);
+            }
+
+            self.not_optimal_counter += 1;
+
+            //print all goods
+            println!("------------------------------------");
+            self.goods.iter().for_each(|(k, v)| {
+                println!("Good: {:?}, quantity: {}", k, v.good.get_qty());
+            });
+            println!("------------------------------------");
+        } else if (self.day >= MAX_DAYS && !self.done) {
+            while (!self.done) {
+                self.sell_all_strat();
+                if !(self.other_than_EUR()) {
+                    self.done = true;
+                }
+            }
+        } else {
+            self.last_daily_data.push(DailyData {
+                event: MarketEvent::Wait,
+                amount_given: 0.,
+                amount_received: 0.,
+                kind_given: GoodKind::EUR,
+                kind_received: GoodKind::EUR,
+            });
+            self.add_market_event();
+        }
+    }
+
+    pub fn random_buy_strat_day(&mut self) {
+        if (self.day < MAX_DAYS) {
+            if self.not_optimal_counter > 5 {
+                self.sell_all_strat();
+                self.not_optimal_counter = 0;
+            } else {
+                let mut rng = rand::thread_rng();
+                let random_f32: f32 = rng.gen();
+                if random_f32 < 0.8 {
+                    println!("--------------------------------------------\nBUY ALL OF KIND\n--------------------------------------------");
+
+                    self.random_buy_strat();
+                } else {
+                    println!("--------------------------------------------\nWAIT\n--------------------------------------------");
+                    wait_one_day!(self.markets[0], self.markets[1]);
+                }
+                self.not_optimal_counter += 1;
+            }
+
+            //print all goods
+            println!("------------------------------------");
+            self.goods.iter().for_each(|(k, v)| {
+                println!("Good: {:?}, quantity: {}", k, v.good.get_qty());
+            });
+            println!("------------------------------------");
+        } else if (self.day >= MAX_DAYS && !self.done) {
+            while (!self.done) {
+                self.sell_all_strat();
+                if !(self.other_than_EUR()) {
+                    self.done = true;
+                }
+            }
+        } else {
+            self.last_daily_data.push(DailyData {
+                event: MarketEvent::Wait,
+                amount_given: 0.,
+                amount_received: 0.,
+                kind_given: GoodKind::EUR,
+                kind_received: GoodKind::EUR,
+            });
+            self.add_market_event();
+        }
+    }
+
     pub fn main_strat_day(&mut self) {
         if (self.day < MAX_DAYS) {
             let starting_eur = self.goods.get(&GoodKind::EUR).unwrap().good.get_qty();
@@ -200,33 +358,6 @@ impl trader_struct {
             let ending_eur = self.goods.get(&GoodKind::EUR).unwrap().good.get_qty();
 
             if !(starting_eur < ending_eur) {
-                /*
-                if (self.other_than_EUR()) {
-                    self.sell_all_strat();
-                } else if self.consecutive_wait < 10 {
-                    self.consecutive_wait += 1;
-
-                    //wait_one_day!(self.markets[0],self.markets[1], self.markets[2]);
-                    wait_one_day!(self.markets[0],self.markets[1]);
-
-                    self.day_passed();
-                } else {
-                    //random f32 between 0 and 1
-                    let mut rng = rand::thread_rng();
-                    let random_f32: f32 = rng.gen();
-                    if random_f32 < 0.5 {
-                        self.buy_all_of_kind_strat(0.2);
-                        self.buy_all_of_kind_strat(0.2);
-                    } else {
-                        self.random_buy_strat();
-                    }
-
-
-
-                }
-
-                 */
-
                 if self.not_optimal_counter > 5 {
                     self.sell_all_strat();
                     self.not_optimal_counter = 0;
@@ -237,7 +368,6 @@ impl trader_struct {
                 if random_f32 < 0.4 {
                     println!("--------------------------------------------\nBUY ALL OF KIND\n--------------------------------------------");
 
-                    self.buy_all_of_kind_strat(0.2);
                     self.buy_all_of_kind_strat(0.2);
                 } else if random_f32 < 0.8 {
                     println!("--------------------------------------------\nRANDOM BUY\n--------------------------------------------");
@@ -265,10 +395,22 @@ impl trader_struct {
                 println!("------------------------------------");
                 self.not_optimal_counter = 0;
             }
-        } else if (self.day == MAX_DAYS) {
-            self.sell_all_strat();
+        } else if (self.day >= MAX_DAYS && !self.done) {
+            while (!self.done) {
+                self.sell_all_strat();
+                if !(self.other_than_EUR()) {
+                    self.done = true;
+                }
+            }
         } else {
-            //trader done
+            self.last_daily_data.push(DailyData {
+                event: MarketEvent::Wait,
+                amount_given: 0.,
+                amount_received: 0.,
+                kind_given: GoodKind::EUR,
+                kind_received: GoodKind::EUR,
+            });
+            self.add_market_event();
         }
     }
 
@@ -302,8 +444,13 @@ impl trader_struct {
 
         let buy_price = self.markets[market_index_lowest]
             .borrow()
-            .get_buy_price(lowest_kind, 1.)
-            .unwrap();
+            .get_buy_price(lowest_kind, 1.);
+
+        let buy_price = match buy_price {
+            Ok(price) => price,
+            Err(_) => f32::INFINITY,
+        };
+
         let sell_price = self.find_sell_highest_quantity(&lowest_kind, vec![market_index_lowest]);
 
         if buy_price < sell_price.0 * 1.1 {
@@ -358,7 +505,7 @@ impl trader_struct {
         return (wealth_of_market / lowest_good.0, lowest_good.1);
     }
 
-    pub fn sell_all_strat(&mut self) {
+    pub fn sell_all_strat(&mut self) -> bool {
         let mut vec_of_goods_to_sell = vec![];
         self.goods.iter().for_each(|(k, v)| {
             if *k != GoodKind::EUR && v.good.get_qty() > 0. {
@@ -367,9 +514,32 @@ impl trader_struct {
             }
         });
 
+        let mut sold_something = false;
+
         vec_of_goods_to_sell.iter().for_each(|k| {
-            self.sell_to_highest(*k, vec![], 1.);
+            if !self.sell_to_highest(*k, vec![], 1.) {
+                //random float between 0.1 and 0.5
+                let mut rng = rand::thread_rng();
+                let random_f32: f32 = rng.gen_range(0.001..0.5);
+
+                if self.sell_to_highest(*k, vec![], random_f32) {
+                    sold_something = true;
+                }
+            } else {
+                sold_something = true;
+            }
         });
+
+        if sold_something {
+            self.end_game_stuck = 0;
+        } else {
+            self.end_game_stuck += 1;
+            if self.end_game_stuck > 30 {
+                self.done = true;
+            }
+        }
+
+        return sold_something;
     }
 
     pub fn random_buy_strat(&mut self) {
@@ -502,12 +672,17 @@ impl trader_struct {
         let price = self.markets[best_deal.1]
             .borrow()
             .get_sell_price(good_kind, quantity);
+
         match price {
             Err(_) => {
                 excluded_markets.push(best_deal.1);
-                self.sell_to_highest(good_kind, excluded_markets, percentage);
+                return self.sell_to_highest(good_kind, excluded_markets, percentage);
             }
             _ => {
+                if price.clone().unwrap() <= 0. {
+                    excluded_markets.push(best_deal.1);
+                    return self.sell_to_highest(good_kind, excluded_markets, percentage);
+                }
                 println!(
                     "PRice: {:?}, quantity: {}",
                     price.clone().unwrap(),
@@ -517,7 +692,7 @@ impl trader_struct {
                 match token_sell {
                     Err(_) => {
                         excluded_markets.push(best_deal.1);
-                        self.sell_to_highest(good_kind, excluded_markets, percentage);
+                        return self.sell_to_highest(good_kind, excluded_markets, percentage);
                     }
                     _ => {
                         self.sell(token_sell.unwrap());
@@ -821,13 +996,14 @@ impl trader_struct {
                 };
                 self.traders_locked.insert(token.clone(), trade);
 
-                self.last_daily_data = DailyData {
+                self.last_daily_data.push(DailyData {
                     event: MarketEvent::LockBuy,
                     amount_given: price_to_pay as f64,
                     amount_received: quantity_to_buy as f64,
                     kind_given: GoodKind::EUR,
                     kind_received: goodKind,
-                };
+                });
+                self.add_market_event();
 
                 self.day_passed();
                 println!(
@@ -871,13 +1047,13 @@ impl trader_struct {
                         .good
                         .merge(good);
 
-                    self.last_daily_data = DailyData {
+                    self.last_daily_data.push(DailyData {
                         event: MarketEvent::Buy,
                         amount_given: trade.giving_quantity as f64,
                         amount_received: trade.receiving_quantity as f64,
                         kind_given: GoodKind::EUR,
                         kind_received: trade.kind_receiving,
-                    };
+                    });
 
                     println!(
                         "{} bought {} {} for {} EUR on {}",
@@ -887,7 +1063,10 @@ impl trader_struct {
                         trade.giving_quantity,
                         trade.market_index
                     );
+
+                    self.add_market_event();
                     self.traders_locked.remove(&*token);
+
                     self.day_passed();
                     println!("DAY NUMBER: {}", self.day);
 
@@ -933,13 +1112,14 @@ impl trader_struct {
                     market_index: market_index,
                 };
 
-                self.last_daily_data = DailyData {
+                self.last_daily_data.push(DailyData {
                     event: MarketEvent::LockSell,
                     amount_given: quantity_to_sell as f64,
                     amount_received: price_wanted as f64,
                     kind_given: goodKind,
                     kind_received: GoodKind::EUR,
-                };
+                });
+                self.add_market_event();
 
                 self.traders_locked.insert(token.clone(), trade);
                 self.day_passed();
@@ -984,13 +1164,13 @@ impl trader_struct {
                         .good
                         .merge(good);
 
-                    self.last_daily_data = DailyData {
+                    self.last_daily_data.push(DailyData {
                         event: MarketEvent::Sell,
                         amount_given: trade.giving_quantity as f64,
                         amount_received: trade.receiving_quantity as f64,
                         kind_given: trade.kind_giving,
                         kind_received: GoodKind::EUR,
-                    };
+                    });
 
                     println!(
                         "{} sold {} {} for {} EUR on {}",
@@ -1000,6 +1180,8 @@ impl trader_struct {
                         trade.receiving_quantity,
                         trade.market_index
                     );
+
+                    self.add_market_event();
                     self.traders_locked.remove(&*token);
                     self.day_passed();
                     println!("DAY NUMBER: {}", self.day);
