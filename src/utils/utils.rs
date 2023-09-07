@@ -1,4 +1,4 @@
-use crate::data_models::market::*;
+use crate::utils::market::{CurrencyData, DailyData, MarketEvent};
 use unitn_market_2022::good::good_kind::GoodKind;
 pub fn compare_currencies(data1: &CurrencyData, data2: &CurrencyData) -> bool {
     data1.eur == data2.eur

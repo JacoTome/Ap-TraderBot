@@ -8,38 +8,35 @@ use core::time::Duration;
 use eframe::egui;
 use egui::{
     plot::{Bar, BarChart, Line, PlotPoints},
-    style::{Selection, WidgetVisuals, Spacing},
-     RichText, Rounding, Stroke, Style, Ui, Vec2, Visuals,
+     RichText,  Ui, 
 };
 use std::{
     collections::vec_deque::VecDeque, collections::HashMap, sync::Mutex, thread, thread::JoinHandle,
 };
 use crate::{
-    data_models::market::TraderTrait,
+    utils::market::TraderTrait,
     trader::{main::Trader, trader_macca},
- utils::utils::{print_event, print_kind},
+    utils::utils::{print_event, print_kind},
+    utils::style::get_app_style,
     utils::consts::*,
     utils::colors::*,
 };
 
 use trader::trader_ricca;
 use itertools::{enumerate,  Itertools};
-use data_models::market::{CurrencyData, DailyCurrencyData, DailyData, MarketData};
+use utils::market::{CurrencyData, DailyCurrencyData, DailyData, MarketData};
 use unitn_market_2022::good::good_kind::GoodKind;
+
+
 pub type TypeMarket = Vec<Vec<MarketData>>;
-
-
 
 lazy_static! {
     pub static ref RUNNING_RICCA: Mutex<bool> = Mutex::new(false);
     pub static ref RUNNING_MACCA: Mutex<bool> = Mutex::new(false);
     pub static ref MARKETS_RICCA: Mutex<TypeMarket> = Mutex::new(Vec::new());
     pub static ref MARKETS_MACCA: Mutex<TypeMarket> = Mutex::new(Vec::new());
-    pub static ref TRADER_DATA_RICCA: Mutex<VecDeque<DailyCurrencyData>> =
-        Mutex::new(VecDeque::new());
-    pub static ref TRADER_DATA_MACCA: Mutex<VecDeque<DailyCurrencyData>> =
-        Mutex::new(VecDeque::new());
-
+    pub static ref TRADER_DATA_RICCA: Mutex<VecDeque<DailyCurrencyData>> = Mutex::new(VecDeque::new());
+    pub static ref TRADER_DATA_MACCA: Mutex<VecDeque<DailyCurrencyData>> = Mutex::new(VecDeque::new());
     pub static ref SELECTED_STRATEGY: Mutex<String> = Mutex::new(STRATEGIES[0].to_string());
 }
 
@@ -65,25 +62,6 @@ fn is_running(key: String) -> bool {
         }
     }
 }
-
-fn main() {
-    tracing_subscriber::fmt::init();
-
-    let options = eframe::NativeOptions {
-        always_on_top: false,
-        initial_window_size: Some(egui::Vec2::new(1400.0, 700.0)),
-        resizable: true,
-        vsync: true,
-        ..Default::default()
-    };
-
-    eframe::run_native(
-        "Trader visualization",
-        options,
-        Box::new(|cc| Box::new(MyApp::new(cc))),
-    );
-}
-
 
 struct Data {
     goods_to_show: (Vec<DailyData>, Vec<CurrencyData>),
@@ -474,15 +452,14 @@ impl MyApp {
                     }
                     match self.selected_trader.as_str() {
                         TRADERS_NAME_RICCA => {
-                    ui.menu_button("Select Strategy",|ui| {
-                        for strat in STRATEGIES {
-                            let text = strat.to_string();
-                            let mut binding = SELECTED_STRATEGY.lock().unwrap();
-                             ui.selectable_value(&mut *binding, strat.to_string(),text);
-                        }
-                    });
-                    ui.label(format!("Selected strategy: {}", *SELECTED_STRATEGY.lock().unwrap()));
-                        
+                            ui.menu_button("Select Strategy",|ui| {
+                                for strat in STRATEGIES {
+                                    let text = strat.to_string();
+                                    let mut binding = SELECTED_STRATEGY.lock().unwrap();
+                                    ui.selectable_value(&mut *binding, strat.to_string(),text);
+                                }
+                            });
+                            ui.label(format!("Selected strategy: {}", *SELECTED_STRATEGY.lock().unwrap()));
                         }
                         _ => {}
                     }
@@ -497,7 +474,7 @@ impl MyApp {
             ui.vertical(|ui| {
                 ui.label(RichText::new("Select to show trader or markets").heading());
                 ui.horizontal(|ui| {
-                ui.set_max_height(20.0);
+                    ui.set_max_height(20.0);
                     if ui.button("Show Markets").clicked() {
                         self.plot_choose = 1;
                     }
@@ -506,7 +483,9 @@ impl MyApp {
                         self.plot_choose = 0;
                     }
                 });
+
                 ui.separator();
+
                 ui.label(RichText::new("Select goods to show").heading());
                 ui.horizontal(|ui| {
                     let select_all_button = ui.button("Select all");
@@ -522,6 +501,7 @@ impl MyApp {
                         }
                     }
                 });
+
                 ui.separator();
 
                 ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
@@ -544,7 +524,6 @@ impl MyApp {
     }
 
     fn right_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
-        self.get_values();
 
         egui::SidePanel::right("status_bar").show(ctx, |ui| {
             ui.label(RichText::new("Status bar").heading());
@@ -1018,104 +997,31 @@ impl MyApp {
 impl<'a> eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.request_repaint_after(Duration::from_millis(100));
+        ctx.set_style(get_app_style());
 
-        let non_interactive_style = WidgetVisuals {
-            fg_stroke: Stroke::new(2.0, DETAILS_COLOR),
-            bg_stroke: Stroke::new(2.0, DETAILS_COLOR),
-            bg_fill: BG_COLOR,
-            rounding: Rounding::none(),
-            expansion: 10.0,
-        };
-
-        let inactive = WidgetVisuals {
-            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
-            bg_stroke: Stroke::new(1.0, INACTIVE_COLOR),
-            bg_fill: INACTIVE_COLOR,
-            rounding: Rounding {
-                nw: 5.0,
-                ne: 5.0,
-                se: 5.0,
-                sw: 5.0,
-            },
-            expansion: 1.0,
-        };
-
-        let hovered = WidgetVisuals {
-            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
-            bg_stroke: Stroke::new(1.0, HOVERED_COLOR),
-            bg_fill: HOVERED_COLOR,
-            rounding: Rounding {
-                nw: 5.0,
-                ne: 5.0,
-                se: 5.0,
-                sw: 5.0,
-            },
-            expansion: 1.5,
-        };
-
-        let active = WidgetVisuals {
-            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
-            bg_stroke: Stroke::new(1.0, ACTIVE_COLOR),
-            bg_fill: ACTIVE_COLOR,
-            rounding: Rounding {
-                nw: 5.0,
-                ne: 5.0,
-                se: 5.0,
-                sw: 5.0,
-            },
-            expansion: 1.5,
-        };
-
-        let open = WidgetVisuals {
-            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
-            bg_stroke: Stroke::new(1.0, TEXT_COLOR),
-            bg_fill: ACTIVE_COLOR,
-            rounding: Rounding {
-                nw: 5.0,
-                ne: 5.0,
-                se: 5.0,
-                sw: 5.0,
-            },
-            expansion: 1.5,
-        };
-
-        let widgets = egui::style::Widgets {
-            noninteractive: non_interactive_style,
-            inactive: inactive,
-            hovered: hovered,
-            active: active,
-            open: open,
-        };
-
-        let selection = Selection {
-            bg_fill: HOVERED_COLOR,
-            stroke: Stroke::new(1.0, TEXT_COLOR),
-        };
-
-        let visuals = Visuals {
-            widgets: widgets,
-            override_text_color: Some(TEXT_COLOR),
-            window_fill: BG_COLOR,
-            panel_fill: BG_COLOR,
-            selection: selection,
-            extreme_bg_color: PLOT_BG_COLOR,
-            ..Default::default()
-        };
-
-        let spacing = Spacing {
-            item_spacing: Vec2::new(10.0, 10.0),
-            ..Default::default()
-        };
-        ctx.set_style(Style {
-            visuals: visuals,
-            spacing: spacing,
-            ..Default::default()
-        });
-
+        self.get_values();
         self.top_panel(ctx);
         self.left_panel(ctx);
         self.right_panel(ctx);
-        // self.bottom_panel(ctx);
         self.central_panel(ctx);
     }
 }
+
+fn main() {
+    tracing_subscriber::fmt::init();
+
+    let options = eframe::NativeOptions {
+        always_on_top: false,
+        initial_window_size: Some(egui::Vec2::new(1400.0, 700.0)),
+        resizable: true,
+        vsync: true,
+        ..Default::default()
+    };
+
+    eframe::run_native(
+        "Trader visualization",
+        options,
+        Box::new(|cc| Box::new(MyApp::new(cc))),
+    );
+}
+

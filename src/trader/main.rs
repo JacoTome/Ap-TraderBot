@@ -1,18 +1,14 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
-use std::thread;
-use std::time::Duration;
 
-use crate::data_models::market::{
-    Currency, CurrencyData, DailyCurrencyData, DailyData, MarketEvent, TraderTrait,
-};
+use crate::utils::market::{CurrencyData, DailyCurrencyData, MarketEvent, TraderTrait};
 use crate::TypeMarket;
 use unitn_market_2022::good::good_kind::GoodKind;
 pub struct Trader<'a> {
-    RUNNING: &'a Mutex<bool>,
-    MARKET: &'a Mutex<TypeMarket>,
-    TRADER_DATA: &'a Mutex<VecDeque<DailyCurrencyData>>,
-    SELECTED_STRATEGY: &'a Mutex<String>,
+    running: &'a Mutex<bool>,
+    market: &'a Mutex<TypeMarket>,
+    trader_data: &'a Mutex<VecDeque<DailyCurrencyData>>,
+    selected_strategy: &'a Mutex<String>,
     trader: Box<dyn TraderTrait>,
     total_currency: CurrencyData,
 }
@@ -30,17 +26,17 @@ impl<'a> Trader<'a> {
     ) -> Self {
         let curr = trader.get_trader_data();
         Trader {
-            RUNNING: run,
-            MARKET: market,
-            TRADER_DATA: trader_data,
-            SELECTED_STRATEGY: strategy,
+            running: run,
+            market,
+            trader_data,
+            selected_strategy: strategy,
             trader: trader,
             total_currency: curr,
         }
     }
 
     fn get_strat_index(&self) -> i32 {
-        let mut binding = self.SELECTED_STRATEGY.lock().unwrap();
+        let binding = self.selected_strategy.lock().unwrap();
         let mut index = 0;
         for (i, strat) in STRATEGIES.iter().enumerate() {
             if *strat == *binding {
@@ -52,7 +48,7 @@ impl<'a> Trader<'a> {
     }
 
     pub fn is_running(&self) -> bool {
-        match self.RUNNING.lock() {
+        match self.running.lock() {
             Ok(binding) => *binding,
 
             Err(e) => {
@@ -62,14 +58,14 @@ impl<'a> Trader<'a> {
         }
     }
     pub fn switch_run_pause(&mut self) {
-        let mut binding = self.RUNNING.lock().unwrap();
+        let mut binding = self.running.lock().unwrap();
         *binding = !*binding;
     }
 
     fn update_daily_data(&mut self) {
         let data = self.trader.get_daily_data();
         for data in data {
-            let mut binding = self.TRADER_DATA.lock().unwrap();
+            let mut binding = self.trader_data.lock().unwrap();
             match data.event {
                 MarketEvent::Buy | MarketEvent::Sell => {
                     let mut currencies = self.total_currency.clone();
@@ -107,7 +103,7 @@ impl<'a> Trader<'a> {
 
     pub fn update_market(&mut self) {
         let mut market_data = self.trader.get_market_data();
-        let mut binding = self.MARKET.lock().unwrap();
+        let mut binding = self.market.lock().unwrap();
         binding.append(&mut market_data);
     }
 

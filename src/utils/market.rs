@@ -146,7 +146,7 @@ pub trait TraderTrait {
     fn initialize_trader() -> Self
     where
         Self: Sized;
-    fn progess_day(&mut self, stratIndex: i32);
+    fn progess_day(&mut self, strat_index: i32);
     fn get_daily_data(&self) -> vec::Vec<DailyData>;
     fn get_trader_data(&self) -> CurrencyData;
     fn get_market_data(&self) -> vec::Vec<vec::Vec<MarketData>>;
