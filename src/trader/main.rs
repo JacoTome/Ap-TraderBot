@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
+use std::thread;
+use std::time::Duration;
 
 use crate::data_models::market::{
     Currency, CurrencyData, DailyCurrencyData, DailyData, MarketEvent, TraderTrait,
@@ -46,6 +48,10 @@ impl<'a> Trader<'a> {
                 false
             }
         }
+    }
+    pub fn switch_run_pause(&mut self) {
+        let mut binding = self.RUNNING.lock().unwrap();
+        *binding = !*binding;
     }
 
     fn update_daily_data(&mut self) {
