@@ -5,15 +5,11 @@ pub mod utils;
 #[macro_use]
 extern crate lazy_static;
 use core::time::Duration;
-use eframe::{
-    egui,
-    glow::{COLOR, COLOR_ATTACHMENT0},
-};
+use eframe::egui;
 use egui::{
-    epaint::{self, RectShape},
-    plot::{Bar, BarChart, Line, PlotBounds, PlotPoints},
-    style::WidgetVisuals,
-    Color32, Frame, Pos2, Rect, RichText, Rounding, Stroke, Style, Ui, Vec2, Visuals,
+    plot::{Bar, BarChart, Line, PlotPoints},
+    style::{Selection, WidgetVisuals},
+    Color32, RichText, Rounding, Stroke, Style, Ui, Vec2, Visuals,
 };
 use itertools::{enumerate, Itertools};
 use std::{
@@ -27,7 +23,7 @@ use crate::{
     data_models::market::TraderTrait,
     trader::{main::Trader, trader_macca},
 };
-use data_models::market::{Currency, CurrencyData, DailyCurrencyData, DailyData, MarketData};
+use data_models::market::{CurrencyData, DailyCurrencyData, DailyData, MarketData};
 use unitn_market_2022::good::good_kind::GoodKind;
 const STRATEGIES: &'static [&'static str] = &[
     "Default", "Prova1", "Prova2", "Prova3", "Prova4", "Prova5", "Prova6",
@@ -41,8 +37,13 @@ const YUAN_COLOR: Color32 = Color32::from_rgb(137, 220, 235);
 
 const BG_COLOR: Color32 = Color32::from_rgb(30, 30, 46);
 const TEXT_COLOR: Color32 = Color32::from_rgb(205, 214, 244);
-const DETAILS_COLOR: Color32 = Color32::from_rgb(69, 71, 90);
+const DETAILS_COLOR: Color32 = Color32::from_rgb(17, 17, 27);
 const PLOT_BG_COLOR: Color32 = Color32::from_rgb(24, 24, 37);
+const INACTIVE_COLOR: Color32 = Color32::from_rgb(49, 50, 68);
+const HOVERED_COLOR: Color32 = Color32::from_rgb(69, 71, 90);
+const ACTIVE_COLOR: Color32 = Color32::from_rgb(88, 91, 112);
+const PAUSED_COLOR: Color32 = Color32::from_rgb(243, 139, 168);
+const RUNNING_COLOR: Color32 = Color32::from_rgb(166, 227, 161);
 
 lazy_static! {
     pub static ref RUNNING_RICCA: Mutex<bool> = Mutex::new(false);
@@ -401,36 +402,6 @@ impl MyApp {
                             _ => {}
                         }
 
-                        // Multi trader
-                        // match &self.traders.0 {
-                        //     Some(thread) => {
-                        //         thread.thread().unpark();
-                        //     }
-                        //     None => {
-                        //         self.traders.0 = Some(thread::spawn(move || {
-                        //             /********************
-                        //                    TRADER
-                        //             ********************/
-                        //             let mut trader = Trader::new(
-                        //                 &RUNNING,
-                        //                 &MARKETS,
-                        //                 &TRADER_DATA,
-                        //                 &SELECTED_STRATEGY,
-                        //                 Box::new(trader_ricca::trader_ricca::initialize_trader(STRAT)),
-                        //             );
-                        //             println!("Trader started");
-                        //             loop {
-                        //                 if trader.is_running() {
-                        //                     trader.pass_one_day();
-                        //                     thread::sleep(std::time::Duration::from_millis(100));
-                        //                 } else {
-                        //                     println!("Parked");
-                        //                     thread::park();
-                        //                 }
-                        //             }
-                        //         }));
-                        //     }
-                        // }
                         for (key, mut value) in self.traders.iter_mut() {
                             let key_to_pass = key.clone();
                             match value {
@@ -507,53 +478,14 @@ impl MyApp {
                     }
 
                     if is_running(self.selected_trader.to_string()) {
-                        ui.colored_label(egui::Color32::GREEN, format!("{} is running", self.selected_trader));
+                        ui.colored_label(RUNNING_COLOR, format!("{} is running", self.selected_trader));
                     } else {
-                        ui.colored_label(egui::Color32::RED, format!("{} is stopped", self.selected_trader));
+                        ui.colored_label(PAUSED_COLOR, format!("{} is stopped", self.selected_trader));
                     }
                 });
             });
         })
     }
-
-    //     if is_running() {
-    //         if self.trader_thread.is_none() {
-    //             self.trader_thread =
-    //                 Some(thread::spawn(move || {
-    //                     /********************
-    //                            TRADER
-    //                     ********************/
-    //                     let paused = Mutex::new(false);
-    //                     let mut trader = Trader::new(
-    //                     &RUNNING,
-    //                     &MARKETS,
-    //                     &TRADER_DATA,
-    //                     &SELECTED_STRATEGY,
-    //                     crate::trader::trader_ricca::trader_struct::initialize_trader(0)
-    //                 );
-    //                     println!("Trader started");
-    //                     loop {
-    //                         if is_running() {
-    //                             trader.pass_one_day();
-    //                             thread::sleep(std::time::Duration::from_millis(100));
-    //                         } else {
-    //                             println!("Parked");
-    //                             thread::park();
-    //                         }
-    //                     }
-    //                 }));
-    //         } else {
-    //             self.trader_thread.as_ref().unwrap().thread().unpark();
-    //         }
-    //     }
-    // }
-
-    // ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-    //     let reset_button = ui.button("Reset");
-    //     if reset_button.clicked() {
-    //         self.index.0 = false;
-    //     }
-    // })
 
     fn left_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
@@ -1023,15 +955,76 @@ impl<'a> eframe::App for MyApp {
         ctx.request_repaint_after(Duration::from_millis(100));
 
         let non_interactive_style = WidgetVisuals {
-            fg_stroke: Stroke::new(1.0, DETAILS_COLOR),
-            bg_stroke: Stroke::new(1.0, DETAILS_COLOR),
+            fg_stroke: Stroke::new(2.0, DETAILS_COLOR),
+            bg_stroke: Stroke::new(2.0, DETAILS_COLOR),
             bg_fill: BG_COLOR,
             rounding: Rounding::none(),
             expansion: 10.0,
         };
+
+        let inactive = WidgetVisuals {
+            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
+            bg_stroke: Stroke::new(1.0, INACTIVE_COLOR),
+            bg_fill: INACTIVE_COLOR,
+            rounding: Rounding {
+                nw: 5.0,
+                ne: 5.0,
+                se: 5.0,
+                sw: 5.0,
+            },
+            expansion: 1.0,
+        };
+
+        let hovered = WidgetVisuals {
+            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
+            bg_stroke: Stroke::new(1.0, HOVERED_COLOR),
+            bg_fill: HOVERED_COLOR,
+            rounding: Rounding {
+                nw: 5.0,
+                ne: 5.0,
+                se: 5.0,
+                sw: 5.0,
+            },
+            expansion: 1.5,
+        };
+
+        let active = WidgetVisuals {
+            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
+            bg_stroke: Stroke::new(1.0, ACTIVE_COLOR),
+            bg_fill: ACTIVE_COLOR,
+            rounding: Rounding {
+                nw: 5.0,
+                ne: 5.0,
+                se: 5.0,
+                sw: 5.0,
+            },
+            expansion: 1.5,
+        };
+
+        let open = WidgetVisuals {
+            fg_stroke: Stroke::new(1.0, TEXT_COLOR),
+            bg_stroke: Stroke::new(1.0, TEXT_COLOR),
+            bg_fill: ACTIVE_COLOR,
+            rounding: Rounding {
+                nw: 5.0,
+                ne: 5.0,
+                se: 5.0,
+                sw: 5.0,
+            },
+            expansion: 1.5,
+        };
+
         let widgets = egui::style::Widgets {
             noninteractive: non_interactive_style,
-            ..Default::default()
+            inactive: inactive,
+            hovered: hovered,
+            active: active,
+            open: open,
+        };
+
+        let selection = Selection {
+            bg_fill: HOVERED_COLOR,
+            stroke: Stroke::new(1.0, TEXT_COLOR),
         };
 
         let visuals = Visuals {
@@ -1039,6 +1032,8 @@ impl<'a> eframe::App for MyApp {
             override_text_color: Some(TEXT_COLOR),
             window_fill: BG_COLOR,
             panel_fill: BG_COLOR,
+            selection: selection,
+            extreme_bg_color: PLOT_BG_COLOR,
             ..Default::default()
         };
 
