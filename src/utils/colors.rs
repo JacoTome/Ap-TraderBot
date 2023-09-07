@@ -1,0 +1,15 @@
+use egui::Color32;
+pub const EUR_COLOR: Color32 = Color32::from_rgb(203, 166, 247);
+pub const USD_COLOR: Color32 = Color32::from_rgb(250, 179, 135);
+pub const YEN_COLOR: Color32 = Color32::from_rgb(166, 227, 161);
+pub const YUAN_COLOR: Color32 = Color32::from_rgb(137, 220, 235);
+pub const BG_COLOR: Color32 = Color32::from_rgb(30, 30, 46);
+pub const TEXT_COLOR: Color32 = Color32::from_rgb(205, 214, 244);
+pub const DETAILS_COLOR: Color32 = Color32::from_rgb(17, 17, 27);
+pub const PLOT_BG_COLOR: Color32 = Color32::from_rgb(24, 24, 37);
+pub const INACTIVE_COLOR: Color32 = Color32::from_rgb(49, 50, 68);
+pub const HOVERED_COLOR: Color32 = Color32::from_rgb(69, 71, 90);
+pub const ACTIVE_COLOR: Color32 = Color32::from_rgb(88, 91, 112);
+pub const PAUSED_COLOR: Color32 = Color32::from_rgb(243, 139, 168);
+pub const RUNNING_COLOR: Color32 = Color32::from_rgb(166, 227, 161);
+pub const TITLE_COLOR: Color32 = Color32::from_rgb(250, 179, 135);

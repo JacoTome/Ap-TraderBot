@@ -71,10 +71,10 @@ pub struct trader_maccacaro {
 }
 
 impl TraderTrait for trader_maccacaro {
-    fn initialize_trader(strat: i32) -> Self {
+    fn initialize_trader() -> Self {
         return trader_maccacaro::init_trader(trader_maccacaro::init_markets());
     }
-    fn progess_day(&mut self) {
+    fn progess_day(&mut self, stratIndex: i32) {
         self.last_daily_data = Vec::new();
         self.last_market_data = Vec::new();
         self.Default();

@@ -8,42 +8,27 @@ use core::time::Duration;
 use eframe::egui;
 use egui::{
     plot::{Bar, BarChart, Line, PlotPoints},
-    style::{Selection, WidgetVisuals},
-    Color32, RichText, Rounding, Stroke, Style, Ui, Vec2, Visuals,
+    style::{Selection, WidgetVisuals, Spacing},
+     RichText, Rounding, Stroke, Style, Ui, Vec2, Visuals,
 };
-use itertools::{enumerate, Itertools};
 use std::{
     collections::vec_deque::VecDeque, collections::HashMap, sync::Mutex, thread, thread::JoinHandle,
 };
-use trader::trader_ricca;
-
-use utils::utils::{print_event, print_kind};
-
 use crate::{
     data_models::market::TraderTrait,
     trader::{main::Trader, trader_macca},
+ utils::utils::{print_event, print_kind},
+    utils::consts::*,
+    utils::colors::*,
 };
+
+use trader::trader_ricca;
+use itertools::{enumerate,  Itertools};
 use data_models::market::{CurrencyData, DailyCurrencyData, DailyData, MarketData};
 use unitn_market_2022::good::good_kind::GoodKind;
-const STRATEGIES: &'static [&'static str] = &[
-    "Default", "Prova1", "Prova2", "Prova3", "Prova4", "Prova5", "Prova6",
-]; // TODO: INSERT STRATEGIES HERE
 pub type TypeMarket = Vec<Vec<MarketData>>;
 
-const EUR_COLOR: Color32 = Color32::from_rgb(203, 166, 247);
-const USD_COLOR: Color32 = Color32::from_rgb(250, 179, 135);
-const YEN_COLOR: Color32 = Color32::from_rgb(166, 227, 161);
-const YUAN_COLOR: Color32 = Color32::from_rgb(137, 220, 235);
 
-const BG_COLOR: Color32 = Color32::from_rgb(30, 30, 46);
-const TEXT_COLOR: Color32 = Color32::from_rgb(205, 214, 244);
-const DETAILS_COLOR: Color32 = Color32::from_rgb(17, 17, 27);
-const PLOT_BG_COLOR: Color32 = Color32::from_rgb(24, 24, 37);
-const INACTIVE_COLOR: Color32 = Color32::from_rgb(49, 50, 68);
-const HOVERED_COLOR: Color32 = Color32::from_rgb(69, 71, 90);
-const ACTIVE_COLOR: Color32 = Color32::from_rgb(88, 91, 112);
-const PAUSED_COLOR: Color32 = Color32::from_rgb(243, 139, 168);
-const RUNNING_COLOR: Color32 = Color32::from_rgb(166, 227, 161);
 
 lazy_static! {
     pub static ref RUNNING_RICCA: Mutex<bool> = Mutex::new(false);
@@ -54,11 +39,10 @@ lazy_static! {
         Mutex::new(VecDeque::new());
     pub static ref TRADER_DATA_MACCA: Mutex<VecDeque<DailyCurrencyData>> =
         Mutex::new(VecDeque::new());
+
     pub static ref SELECTED_STRATEGY: Mutex<String> = Mutex::new(STRATEGIES[0].to_string());
 }
 
-const TRADERS_NAME_RICCA: &str = "Ricca";
-const TRADERS_NAME_MACCA: &str = "Maccacaro";
 fn is_running(key: String) -> bool {
     match key.as_str() {
         TRADERS_NAME_RICCA => match RUNNING_RICCA.lock() {
@@ -87,7 +71,7 @@ fn main() {
 
     let options = eframe::NativeOptions {
         always_on_top: false,
-        initial_window_size: Some(egui::Vec2::new(1200.0, 800.0)),
+        initial_window_size: Some(egui::Vec2::new(1400.0, 700.0)),
         resizable: true,
         vsync: true,
         ..Default::default()
@@ -100,7 +84,6 @@ fn main() {
     );
 }
 
-const STRAT: i32 = 3;
 
 struct Data {
     goods_to_show: (Vec<DailyData>, Vec<CurrencyData>),
@@ -320,22 +303,120 @@ impl MyApp {
     fn top_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    if ui.button("Macca").clicked() {
-                        self.selected_trader = TRADERS_NAME_MACCA.to_string();
-                    }
-                    if ui.button("Ricca").clicked() {
-                        self.selected_trader = TRADERS_NAME_RICCA.to_string();
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.set_height(50.0);
-                    ui.label(
-                        egui::RichText::new("Trader visualization")
-                            .size(15.0)
-                            .color(Color32::YELLOW),
-                    );
+                ui.set_height(100.0);
+                    ui.vertical_centered(|ui| {
 
+                    ui.add_space(10.0);
+
+                    ui.menu_button(RichText::from(format!("Visualizing {}'s trader", self.selected_trader)).heading().color(TITLE_COLOR), |ui| { 
+                        ui.selectable_value(&mut self.selected_trader, TRADERS_NAME_RICCA.to_string(), "Ricca");
+                        ui.selectable_value(&mut self.selected_trader, TRADERS_NAME_MACCA.to_string(), "Macca");
+                    });
+
+
+                    let text = if is_running(self.selected_trader.clone()) {
+                        RichText::from("Pause").color(PAUSED_COLOR).heading()
+                    } else {
+                        match self.selected_trader.as_str(){
+                            TRADERS_NAME_RICCA => {
+                                RichText::from(format!("Run with strategy {}",
+                                *SELECTED_STRATEGY.lock().unwrap() )).color(RUNNING_COLOR).heading()
+                            }
+                            _ => {
+                                RichText::from("Run").color(RUNNING_COLOR).heading()
+                            }
+                        }
+                    };
+                    
+
+                    let start_button = ui.button(text).on_hover_text("Start/Stop trader");
+
+                    if start_button.clicked() {
+                        match self.selected_trader.as_str() {
+                            "Ricca" => {
+                                let mut binding = RUNNING_RICCA.lock().unwrap();
+                                *binding = !*binding;
+                                self.traders_data.get_mut("Ricca").unwrap().index.0 = true;
+                            }
+                            "Maccacaro" => {
+                                let mut binding = RUNNING_MACCA.lock().unwrap();
+                                *binding = !*binding;
+                                self.traders_data.get_mut("Maccacaro").unwrap().index.0 = true;
+                            }
+                            _ => {}
+                        }
+
+                        for (key,  value) in self.traders.iter_mut() {
+                            let key_to_pass = key.clone();
+                            match value {
+                                Some(thread) => {
+                                    if is_running(self.selected_trader.clone()) {
+                                        thread.thread().unpark();
+                                    } 
+                                }
+                                None => {
+                                    *value =  Some(thread::spawn(move || {
+                                        match key_to_pass.as_str() {
+                                            "Ricca" => {
+                                                let mut trader = Trader::new(
+                                                &RUNNING_RICCA,
+                                                &MARKETS_RICCA,
+                                                &TRADER_DATA_RICCA,
+                                                &SELECTED_STRATEGY,
+                                                Box::new(
+                                                    trader_ricca::trader_ricca::initialize_trader(),
+                                                ),
+                                            );
+                                                println!("Trader started");
+                                                loop {
+                                                    if trader.is_running() {
+                                                        trader.pass_one_day();
+                                                        thread::sleep(
+                                                            std::time::Duration::from_millis(100),
+                                                        );
+                                                    } else {
+                                                        println!("Parked");
+                                                        thread::park();
+                                                    }
+                                                }
+                                            }
+                                            "Maccacaro" => {
+                                                let mut trader = Trader::new(
+                                                &RUNNING_MACCA,
+                                                &MARKETS_MACCA,
+                                                &TRADER_DATA_MACCA,
+                                                &SELECTED_STRATEGY,
+                                                Box::new(
+                                                    trader_macca::trader_maccacaro::initialize_trader(),
+                                                ),
+                                            );
+                                                println!("Trader started");
+                                                loop {
+                                                    if trader.is_running() {
+                                                        trader.pass_one_day();
+                                                        thread::sleep(
+                                                            std::time::Duration::from_millis(100),
+                                                        );
+                                                    } else {
+                                                        println!("Parked");
+                                                        thread::park();
+                                                    }
+                                                }
+                                            }
+                                            _ => {
+                                                println!("Error: Trader not found");
+                                            }
+                                        }
+                                    }));
+                                }
+                            }
+                        }
+                    }
+                    
+                });
+                ui.separator();
+                ui.horizontal_centered(|ui| {
+                    ui.set_max_height(40.0);
                     let load_all_button = ui.button("-1 Day").on_hover_text("Load all values");
                     if load_all_button.clicked() {
                         match self.selected_trader.as_str() {
@@ -363,8 +444,8 @@ impl MyApp {
                     }
 
                     ui.label("Select day");
-                    let mut val_string = format!("").to_string();
-                    let value = ui.add_sized([50.0, 20.0], egui::TextEdit::singleline(&mut val_string).hint_text(String::from("Day")));
+                    let mut val_string = format!("{}", self.load_value).to_string();
+                    let value = ui.add_sized([50.0, 20.0], egui::TextEdit::singleline(&mut val_string).hint_text(String::from(format!("{}", self.load_value))));
 
                     let load_value = ui.button("Load");
                     if value.changed() {
@@ -386,130 +467,59 @@ impl MyApp {
                             .1
                     ));
 
-                    let start_button = ui.button("Start/Stop");
-                    if start_button.clicked() {
-                        match self.selected_trader.as_str() {
-                            "Ricca" => {
-                                let mut binding = RUNNING_RICCA.lock().unwrap();
-                                *binding = !*binding;
-                                self.traders_data.get_mut("Ricca").unwrap().index.0 = true;
-                            }
-                            "Maccacaro" => {
-                                let mut binding = RUNNING_MACCA.lock().unwrap();
-                                *binding = !*binding;
-                                self.traders_data.get_mut("Maccacaro").unwrap().index.0 = true;
-                            }
-                            _ => {}
-                        }
-
-                        for (key, mut value) in self.traders.iter_mut() {
-                            let key_to_pass = key.clone();
-                            match value {
-                                Some(thread) => {
-                                    thread.thread().unpark();
-                                }
-                                None => {
-                                    value = &mut Some(thread::spawn(move || {
-                                        match key_to_pass.as_str() {
-                                            "Ricca" => {
-                                                /********************
-                                                       TRADER
-                                                ********************/
-                                                let mut trader = Trader::new(
-                                                &RUNNING_RICCA,
-                                                &MARKETS_RICCA,
-                                                &TRADER_DATA_RICCA,
-                                                &SELECTED_STRATEGY,
-                                                Box::new(
-                                                    trader_ricca::trader_ricca::initialize_trader(
-                                                        STRAT,
-                                                    ),
-                                                ),
-                                            );
-                                                println!("Trader started");
-                                                loop {
-                                                    if trader.is_running() {
-                                                        trader.pass_one_day();
-                                                        thread::sleep(
-                                                            std::time::Duration::from_millis(100),
-                                                        );
-                                                    } else {
-                                                        println!("Parked");
-                                                        thread::park();
-                                                    }
-                                                }
-                                            }
-                                            "Maccacaro" => {
-                                                /********************
-                                                       TRADER
-                                                ********************/
-                                                let mut trader = Trader::new(
-                                                &RUNNING_MACCA,
-                                                &MARKETS_MACCA,
-                                                &TRADER_DATA_MACCA,
-                                                &SELECTED_STRATEGY,
-                                                Box::new(
-                                                    trader_macca::trader_maccacaro::initialize_trader(
-                                                        STRAT,
-                                                    ),
-                                                ),
-                                            );
-                                                println!("Trader started");
-                                                loop {
-                                                    if trader.is_running() {
-                                                        trader.pass_one_day();
-                                                        thread::sleep(
-                                                            std::time::Duration::from_millis(100),
-                                                        );
-                                                    } else {
-                                                        println!("Parked");
-                                                        thread::park();
-                                                    }
-                                                }
-                                            }
-                                            _ => {
-                                                println!("Error: Trader not found");
-                                            }
-                                        }
-                                    }));
-                                }
-                            }
-                        }
-                    }
-
                     if is_running(self.selected_trader.to_string()) {
-                        ui.colored_label(RUNNING_COLOR, format!("{} is running", self.selected_trader));
+                        ui.colored_label(RUNNING_COLOR, "Trader is running");
                     } else {
-                        ui.colored_label(PAUSED_COLOR, format!("{} is stopped", self.selected_trader));
+                        ui.colored_label(PAUSED_COLOR, "Trader has been stopped");
+                    }
+                    match self.selected_trader.as_str() {
+                        TRADERS_NAME_RICCA => {
+                    ui.menu_button("Select Strategy",|ui| {
+                        for strat in STRATEGIES {
+                            let text = strat.to_string();
+                            let mut binding = SELECTED_STRATEGY.lock().unwrap();
+                             ui.selectable_value(&mut *binding, strat.to_string(),text);
+                        }
+                    });
+                    ui.label(format!("Selected strategy: {}", *SELECTED_STRATEGY.lock().unwrap()));
+                        
+                        }
+                        _ => {}
                     }
                 });
+                ui.separator();
             });
         })
     }
 
     fn left_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
         egui::SidePanel::left("side_panel").show(ctx, |ui| {
-            ui.label(RichText::new("Select goods to show").heading());
-            ui.separator();
             ui.vertical(|ui| {
-                ui.horizontal_top(|ui| {
+                ui.label(RichText::new("Select to show trader or markets").heading());
+                ui.horizontal(|ui| {
+                ui.set_max_height(20.0);
+                    if ui.button("Show Markets").clicked() {
+                        self.plot_choose = 1;
+                    }
+                    ui.add_space(10.0);
+                    if ui.button("Show Trader").clicked() {
+                        self.plot_choose = 0;
+                    }
+                });
+                ui.separator();
+                ui.label(RichText::new("Select goods to show").heading());
+                ui.horizontal(|ui| {
                     let select_all_button = ui.button("Select all");
                     if select_all_button.clicked() {
                         for (_key, value) in self.curr_to_show.iter_mut() {
                             *value = true;
                         }
-                        /* for (_key, value) in self.goods_to_show.iter_mut() {
-                            value.0 = true;
-                        }*/
                     }
                     let deselect_all_button = ui.button("Deselect all");
                     if deselect_all_button.clicked() {
                         for (_key, value) in self.curr_to_show.iter_mut() {
                             *value = false;
                         }
-                        /*    for (_key, value) in self.goods_to_show.iter_mut() {
-                            value.0 = false;
-                        }*/
                     }
                 });
                 ui.separator();
@@ -566,6 +576,69 @@ impl MyApp {
                         ui.label(format!("Kind received: "));
                     }
                 }
+                ui.separator();
+            let values = self
+                .traders_data
+                .get(self.selected_trader.as_str())
+                .unwrap()
+                .goods_to_show
+                .1
+                .clone();
+            let last_currency = values.last();
+            if last_currency.is_none() {
+                return;
+            }
+            ui.vertical(|ui| {
+                ui.vertical(|ui| {
+                    ui.label("Last currency: ");
+                    ui.label(format!("EUR: {}", last_currency.unwrap().eur));
+                    ui.label(format!("USD: {}", last_currency.unwrap().usd));
+                    ui.label(format!("YEN: {}", last_currency.unwrap().yen));
+                    ui.label(format!("YUAN: {}", last_currency.unwrap().yuan));
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.label("Difference in 50 days: ");
+                    if values.len() > 50 {
+                        ui.label(format!(
+                            "EUR: {}",
+                            last_currency.unwrap().eur - values[values.len() - 50].eur
+                        ));
+                        ui.label(format!(
+                            "USD: {}",
+                            last_currency.unwrap().usd - values[values.len() - 50].usd
+                        ));
+                        ui.label(format!(
+                            "YEN: {}",
+                            last_currency.unwrap().yen - values[values.len() - 50].yen
+                        ));
+                        ui.label(format!(
+                            "YUAN: {}",
+                            last_currency.unwrap().yuan - values[values.len() - 50].yuan
+                        ));
+                    }
+                });
+                ui.separator();
+                ui.vertical(|ui| {
+                    ui.label("Total gain: ");
+                    ui.label(format!(
+                        "EUR: {}",
+                        last_currency.unwrap().eur - values[0].eur
+                    ));
+                    ui.label(format!(
+                        "USD: {}",
+                        last_currency.unwrap().usd - values[0].usd
+                    ));
+                    ui.label(format!(
+                        "YEN: {}",
+                        last_currency.unwrap().yen - values[0].yen
+                    ));
+                    ui.label(format!(
+                        "YUAN: {}",
+                        last_currency.unwrap().yuan - values[0].yuan
+                    ));
+                })
+            });
             });
         })
     }
@@ -773,11 +846,12 @@ impl MyApp {
         let number_markets = values.len();
         ui.horizontal_wrapped(|ui| {
             ui.set_max_width(800.0);
+            let total_width = ui.available_width();
             for (key, value) in values {
                 ui.vertical(|ui| {
                     ui.label("Market: ".to_string() + &key);
                     egui::widgets::plot::Plot::new(key.clone())
-                        .height(800.0 / number_markets as f32)
+                        .height(total_width / number_markets as f32)
                         .view_aspect(1.0)
                         .show(ui, |ui| {
                             for curr in
@@ -850,18 +924,9 @@ impl MyApp {
 
     fn central_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
         egui::CentralPanel::default().show(ctx, |ui| {
-            // Top down menu
-            ui.group(|ui| {
-                ui.set_style(Style {
-                    spacing: egui::style::Spacing {
-                        item_spacing: Vec2 { x: 5.0, y: 5.0 },
-                        ..Default::default()
-                    },
-                    ..Default::default()
-                });
-                ui.set_min_size(Vec2::new(200.0, 10.0));
+            ui.vertical_centered(|ui| {
+                ui.horizontal(|ui| {
                 ui.set_max_height(20.0);
-                ui.horizontal_top(|ui| {
                     if ui.button("Show Markets").clicked() {
                         self.plot_choose = 1;
                     }
@@ -869,20 +934,20 @@ impl MyApp {
                     if ui.button("Show Trader").clicked() {
                         self.plot_choose = 0;
                     }
-                })
-            });
+                });
 
             match self.plot_choose {
                 0 => self.show_trader(ui),
                 1 => self.show_market(ui),
                 _ => {}
             }
+            });
         })
     }
 
-    fn bottom_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
+    fn _bottom_panel(&mut self, ctx: &egui::Context) -> egui::InnerResponse<()> {
         egui::TopBottomPanel::bottom("Statistics").show(ctx, |ui| {
-            ui.set_min_height(100.0);
+            ui.set_height(150.0);
             ui.label("Statistics");
             let values = self
                 .traders_data
@@ -1037,15 +1102,20 @@ impl<'a> eframe::App for MyApp {
             ..Default::default()
         };
 
+        let spacing = Spacing {
+            item_spacing: Vec2::new(10.0, 10.0),
+            ..Default::default()
+        };
         ctx.set_style(Style {
             visuals: visuals,
+            spacing: spacing,
             ..Default::default()
         });
 
         self.top_panel(ctx);
         self.left_panel(ctx);
         self.right_panel(ctx);
+        // self.bottom_panel(ctx);
         self.central_panel(ctx);
-        self.bottom_panel(ctx);
     }
 }

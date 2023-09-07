@@ -39,6 +39,18 @@ impl<'a> Trader<'a> {
         }
     }
 
+    fn get_strat_index(&self) -> i32 {
+        let mut binding = self.SELECTED_STRATEGY.lock().unwrap();
+        let mut index = 0;
+        for (i, strat) in STRATEGIES.iter().enumerate() {
+            if *strat == *binding {
+                index = i as i32;
+                break;
+            }
+        }
+        index
+    }
+
     pub fn is_running(&self) -> bool {
         match self.RUNNING.lock() {
             Ok(binding) => *binding,
@@ -101,7 +113,7 @@ impl<'a> Trader<'a> {
 
     pub fn pass_one_day(&mut self) {
         // Daily update
-        self.trader.progess_day();
+        self.trader.progess_day(self.get_strat_index());
         self.update_daily_data();
         self.update_market();
     }

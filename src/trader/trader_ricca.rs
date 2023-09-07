@@ -23,10 +23,8 @@ use unitn_market_2022::market::{
     BuyError, LockBuyError, LockSellError, Market, MarketGetterError, SellError,
 };
 
-use BVC::BVCMarket;
-//use rcnz_market::rcnz::RCNZ;
-use bose::market::BoseMarket;
 use rand::{thread_rng, Rng};
+
 use unitn_market_2022::good::consts::{
     DEFAULT_EUR_USD_EXCHANGE_RATE, DEFAULT_EUR_YEN_EXCHANGE_RATE, DEFAULT_EUR_YUAN_EXCHANGE_RATE,
     DEFAULT_GOOD_KIND,
@@ -35,11 +33,15 @@ use unitn_market_2022::good::good::Good;
 use unitn_market_2022::market::LockBuyError::BidTooLow;
 use unitn_market_2022::{subscribe_each_other, wait_one_day};
 
-// old/wrong crate
+use bose::market::BoseMarket;
+use BVC::BVCMarket;
+
+// broken market crate
 use rcnz_market::rcnz::RCNZ;
+//use RCNZ::RCNZ;
 
 const STARTING_EUR: f32 = 500000.0;
-const MAX_DAYS: i32 = 1000;
+const MAX_DAYS: i32 = 10000;
 
 pub struct trade {
     pub trans_kind: unitn_market_2022::event::event::EventKind,
@@ -65,24 +67,28 @@ pub struct trader_ricca {
     last_daily_data: Vec<DailyData>,
     last_market_data: Vec<Vec<MarketData>>,
     done: bool,
-    strat_index: i32,
     end_game_stuck: i32,
 }
 
 impl TraderTrait for trader_ricca {
-    fn initialize_trader(stratIndex: i32) -> Self {
-        return trader_ricca::init_trader(trader_ricca::init_markets(), stratIndex);
+    fn initialize_trader() -> Self {
+        return trader_ricca::init_trader(trader_ricca::init_markets());
     }
 
-    fn progess_day(&mut self) {
+    fn progess_day(&mut self, stratIndex: i32) {
         self.last_daily_data = Vec::new();
         self.last_market_data = Vec::new();
 
-        match self.strat_index {
-            0 => self.buy_low_sell_high_strat_day(),
+        println!(
+            "--------------- TRADER DAY: {} -------------------------",
+            self.day
+        );
+
+        match stratIndex {
+            0 => self.main_strat_day(),
             1 => self.buy_all_of_kind_strat_day(),
             2 => self.random_buy_strat_day(),
-            3 => self.main_strat_day(),
+            3 => self.buy_low_sell_high_strat_day(),
             _ => self.main_strat_day(),
         }
     }
@@ -96,7 +102,7 @@ impl TraderTrait for trader_ricca {
     }
 
     fn get_trader_data(&self) -> CurrencyData {
-        let currency_data = CurrencyData {
+        let mut currency_data = CurrencyData {
             eur: self.goods.get(&GoodKind::EUR).unwrap().good.get_qty() as f64,
             usd: self.goods.get(&GoodKind::USD).unwrap().good.get_qty() as f64,
             yen: self.goods.get(&GoodKind::YEN).unwrap().good.get_qty() as f64,
@@ -150,15 +156,16 @@ impl trader_ricca {
 
         markets.push((BVCMarket::new_random()));
         markets.push((BoseMarket::new_random()));
-        //markets.push((RCNZ::new_random()));
+        // markets.push((rcnz_market::rcnz::RCNZ::new_random()));
+        //markets.push(RCNZ::new_random());
 
-        //subscribe_each_other!(markets[0], markets[1], markets[2]);
+        // subscribe_each_other!(markets[0], markets[1], markets[2]);
         subscribe_each_other!(markets[0], markets[1]);
 
         markets
     }
 
-    pub fn init_trader(markets: Vec<Rc<RefCell<dyn Market>>>, strat_index: i32) -> trader_ricca {
+    pub fn init_trader(markets: Vec<Rc<RefCell<dyn Market>>>) -> trader_ricca {
         let mut trader = trader_ricca {
             markets: markets,
             goods: HashMap::new(),
@@ -170,7 +177,6 @@ impl trader_ricca {
             last_daily_data: Vec::new(),
             last_market_data: Vec::new(),
             done: false,
-            strat_index: strat_index,
         };
 
         trader.add_market_event();
@@ -207,6 +213,19 @@ impl trader_ricca {
         trader
     }
 
+    pub fn wait_update(&mut self) {
+        wait_one_day!(self.markets[0], self.markets[1]);
+        self.last_daily_data.push(DailyData {
+            event: MarketEvent::Wait,
+            amount_given: 0.,
+            amount_received: 0.,
+            kind_given: GoodKind::EUR,
+            kind_received: GoodKind::EUR,
+        });
+        self.add_market_event();
+        self.day_passed();
+    }
+
     pub fn buy_low_sell_high_strat_day(&mut self) {
         if (self.day < MAX_DAYS) {
             let starting_eur = self.goods.get(&GoodKind::EUR).unwrap().good.get_qty();
@@ -222,7 +241,7 @@ impl trader_ricca {
                 }
 
                 println!("--------------------------------------------\nWAIT\n--------------------------------------------");
-                wait_one_day!(self.markets[0], self.markets[1]);
+                self.wait_update();
 
                 //print all goods
                 println!("------------------------------------");
@@ -234,6 +253,7 @@ impl trader_ricca {
                 self.not_optimal_counter += 1;
             } else {
                 //print all goods
+                print!("-----------------NOICE_______________________________________________________________________________________________________--------------------");
                 println!("------------------------------------");
                 self.goods.iter().for_each(|(k, v)| {
                     println!("Good: {:?}, quantity: {}", k, v.good.get_qty());
@@ -242,21 +262,9 @@ impl trader_ricca {
                 self.not_optimal_counter = 0;
             }
         } else if (self.day >= MAX_DAYS && !self.done) {
-            while (!self.done) {
-                self.sell_all_strat();
-                if !(self.other_than_EUR()) {
-                    self.done = true;
-                }
-            }
+            self.end_game_sell_all();
         } else {
-            self.last_daily_data.push(DailyData {
-                event: MarketEvent::Wait,
-                amount_given: 0.,
-                amount_received: 0.,
-                kind_given: GoodKind::EUR,
-                kind_received: GoodKind::EUR,
-            });
-            self.add_market_event();
+            self.wait_update();
         }
     }
 
@@ -269,13 +277,15 @@ impl trader_ricca {
 
             let mut rng = rand::thread_rng();
             let random_f32: f32 = rng.gen();
-            if random_f32 < 0.8 {
+            if random_f32 < 0.2 {
                 println!("--------------------------------------------\nBUY ALL OF KIND\n--------------------------------------------");
 
-                self.buy_all_of_kind_strat(0.2);
+                if !self.buy_all_of_kind_strat(0.4) {
+                    self.wait_update();
+                }
             } else {
                 println!("--------------------------------------------\nWAIT\n--------------------------------------------");
-                wait_one_day!(self.markets[0], self.markets[1]);
+                self.wait_update();
             }
 
             self.not_optimal_counter += 1;
@@ -287,21 +297,9 @@ impl trader_ricca {
             });
             println!("------------------------------------");
         } else if (self.day >= MAX_DAYS && !self.done) {
-            while (!self.done) {
-                self.sell_all_strat();
-                if !(self.other_than_EUR()) {
-                    self.done = true;
-                }
-            }
+            self.end_game_sell_all();
         } else {
-            self.last_daily_data.push(DailyData {
-                event: MarketEvent::Wait,
-                amount_given: 0.,
-                amount_received: 0.,
-                kind_given: GoodKind::EUR,
-                kind_received: GoodKind::EUR,
-            });
-            self.add_market_event();
+            self.wait_update();
         }
     }
 
@@ -316,10 +314,12 @@ impl trader_ricca {
                 if random_f32 < 0.8 {
                     println!("--------------------------------------------\nBUY ALL OF KIND\n--------------------------------------------");
 
-                    self.random_buy_strat();
+                    if !self.random_buy_strat() {
+                        self.wait_update();
+                    }
                 } else {
                     println!("--------------------------------------------\nWAIT\n--------------------------------------------");
-                    wait_one_day!(self.markets[0], self.markets[1]);
+                    self.wait_update();
                 }
                 self.not_optimal_counter += 1;
             }
@@ -331,21 +331,9 @@ impl trader_ricca {
             });
             println!("------------------------------------");
         } else if (self.day >= MAX_DAYS && !self.done) {
-            while (!self.done) {
-                self.sell_all_strat();
-                if !(self.other_than_EUR()) {
-                    self.done = true;
-                }
-            }
+            self.end_game_sell_all();
         } else {
-            self.last_daily_data.push(DailyData {
-                event: MarketEvent::Wait,
-                amount_given: 0.,
-                amount_received: 0.,
-                kind_given: GoodKind::EUR,
-                kind_received: GoodKind::EUR,
-            });
-            self.add_market_event();
+            self.wait_update();
         }
     }
 
@@ -365,17 +353,17 @@ impl trader_ricca {
 
                 let mut rng = rand::thread_rng();
                 let random_f32: f32 = rng.gen();
-                if random_f32 < 0.4 {
+                if random_f32 < 0.03 {
                     println!("--------------------------------------------\nBUY ALL OF KIND\n--------------------------------------------");
 
-                    self.buy_all_of_kind_strat(0.2);
-                } else if random_f32 < 0.8 {
+                    self.buy_all_of_kind_strat(0.3);
+                } else if random_f32 < 0.06 {
                     println!("--------------------------------------------\nRANDOM BUY\n--------------------------------------------");
 
                     self.random_buy_strat();
                 } else {
                     println!("--------------------------------------------\nWAIT\n--------------------------------------------");
-                    wait_one_day!(self.markets[0], self.markets[1]);
+                    self.wait_update();
                 }
 
                 //print all goods
@@ -388,6 +376,7 @@ impl trader_ricca {
                 self.not_optimal_counter += 1;
             } else {
                 //print all goods
+                print!("-----------------NOICE_______________________________________________________________________________________________________--------------------");
                 println!("------------------------------------");
                 self.goods.iter().for_each(|(k, v)| {
                     println!("Good: {:?}, quantity: {}", k, v.good.get_qty());
@@ -396,25 +385,24 @@ impl trader_ricca {
                 self.not_optimal_counter = 0;
             }
         } else if (self.day >= MAX_DAYS && !self.done) {
-            while (!self.done) {
-                self.sell_all_strat();
-                if !(self.other_than_EUR()) {
-                    self.done = true;
-                }
-            }
+            self.end_game_sell_all();
         } else {
-            self.last_daily_data.push(DailyData {
-                event: MarketEvent::Wait,
-                amount_given: 0.,
-                amount_received: 0.,
-                kind_given: GoodKind::EUR,
-                kind_received: GoodKind::EUR,
-            });
-            self.add_market_event();
+            self.wait_update();
         }
     }
 
-    pub fn buy_all_of_kind_strat(&mut self, percentage_of_wealth: f32) {
+    pub fn end_game_sell_all(&mut self) {
+        while (!self.done) {
+            self.sell_all_strat();
+            if !(self.other_than_EUR()) {
+                self.done = true;
+            } else {
+                self.wait_update();
+            }
+        }
+    }
+
+    pub fn buy_all_of_kind_strat(&mut self, percentage_of_wealth: f32) -> bool {
         /*
         let mut vec_of_goods_to_buy = vec![GoodKind::USD, GoodKind::YUAN, GoodKind::YEN];
         //pick random item from vec
@@ -454,35 +442,42 @@ impl trader_ricca {
         let sell_price = self.find_sell_highest_quantity(&lowest_kind, vec![market_index_lowest]);
 
         if buy_price < sell_price.0 * 1.1 {
-            let quantity = self
-                .calculate_amount_to_buy(
-                    market_index_lowest,
-                    lowest_kind,
-                    f32::INFINITY,
-                    percentage_of_wealth,
-                )
-                .0;
-            let price_to_pay = self.markets[market_index_lowest]
-                .borrow()
-                .get_buy_price(lowest_kind, quantity)
-                .unwrap();
-            let token_buy = self.lock_buy(market_index_lowest, lowest_kind, quantity, price_to_pay);
+            let quantity_price = self.calculate_amount_to_buy(
+                market_index_lowest,
+                lowest_kind,
+                f32::INFINITY,
+                percentage_of_wealth,
+            );
+            if (quantity_price.1 == -1.) {
+                return false;
+            }
+
+            let token_buy = self.lock_buy(
+                market_index_lowest,
+                lowest_kind,
+                quantity_price.0,
+                quantity_price.1,
+            );
+
             match token_buy {
                 Ok(_) => {
                     self.buy(token_buy.unwrap());
+                    return true;
                 }
                 Err(_) => {
                     println!(
                         "BUYING {:?} FROM MARKET {} FOR {} EUR FAILED",
                         lowest_kind,
                         market_index_lowest,
-                        quantity * buy_price
+                        quantity_price.0 * buy_price
                     );
+
+                    return false;
                     panic!(
                         "BUYING {:?} FROM MARKET {} FOR {} EUR FAILED",
                         lowest_kind,
                         market_index_lowest,
-                        quantity * buy_price
+                        quantity_price.0 * buy_price
                     );
                 }
             }
@@ -491,10 +486,8 @@ impl trader_ricca {
                 "not good enough price to buy {:?} from market {}, high sell: {:?}, buy :{}",
                 lowest_kind, market_index_lowest, sell_price, buy_price
             );
-            self.markets.iter().enumerate().for_each(|(i, market)| {
-                let market = market.borrow();
-                println!("Market {}: {:?}", market.get_name(), market.get_goods());
-            });
+
+            return false;
         }
     }
 
@@ -542,20 +535,27 @@ impl trader_ricca {
         return sold_something;
     }
 
-    pub fn random_buy_strat(&mut self) {
+    pub fn random_buy_strat(&mut self) -> bool {
         let goods = vec![GoodKind::USD, GoodKind::YUAN, GoodKind::YEN];
         let quantity_of_EUR = self.goods.get(&GoodKind::EUR).unwrap().good.get_qty();
         //randomly buy all kinds of goods
+        let mut bought_something = false;
+
         goods.iter().for_each(|(k)| {
             let y: f32 = rand::thread_rng().gen();
             let v = (y * 0.10) + 0.05;
 
             let quantity_of_EUR_to_spend = quantity_of_EUR * v;
-            self.buy_random(*k, quantity_of_EUR_to_spend, vec![]);
+
+            if (self.buy_random(*k, quantity_of_EUR_to_spend, vec![])) {
+                bought_something = true;
+            }
         });
+
+        return bought_something;
     }
 
-    pub fn buy_low_sell_high_strat(&mut self) {
+    pub fn buy_low_sell_high_strat(&mut self) -> bool {
         let rate = self.find_best_goodKind();
         if (rate.1 .2 > rate.1 .3) {
             let mut quantity_gain_to_sell = self.calculate_amount_to_sell(rate.1 .0, rate.0);
@@ -580,27 +580,39 @@ impl trader_ricca {
             if quantity > 0.01 && gain > price * 1.02 {
                 let token_sell = self.lock_sell(rate.1 .0, rate.0, quantity, gain);
                 let mut token_buy = self.lock_buy(rate.1 .1, rate.0, quantity, price);
-                match token_buy {
-                    Err(BidTooLow {
-                        lowest_acceptable_bid: lowest,
-                        ..
-                    }) => {
-                        println!("Bid too low, lowest acceptable bid is: {}", lowest);
-                        if gain > lowest {
-                            token_buy = self.lock_buy(rate.1 .1, rate.0, quantity, lowest);
-                            self.buy(token_buy.unwrap());
-                            self.sell(token_sell.unwrap());
-                        } else {
-                            panic!("Price changed wrongly");
-                        }
-                    }
+                match token_sell {
                     Err(_) => {
-                        //panic
+                        return false;
                         panic!("Unexpected error");
                     }
                     _ => {
-                        self.buy(token_buy.unwrap());
-                        self.sell(token_sell.unwrap());
+                        match token_buy {
+                            Err(BidTooLow {
+                                lowest_acceptable_bid: lowest,
+                                ..
+                            }) => {
+                                println!("Bid too low, lowest acceptable bid is: {}", lowest);
+                                if gain > lowest {
+                                    token_buy = self.lock_buy(rate.1 .1, rate.0, quantity, lowest);
+                                    self.buy(token_buy.unwrap());
+                                    self.sell(token_sell.unwrap());
+                                    return true;
+                                } else {
+                                    return false;
+                                    panic!("Price changed wrongly");
+                                }
+                            }
+                            Err(_) => {
+                                //panic
+                                return false;
+                                panic!("Unexpected error");
+                            }
+                            _ => {
+                                self.buy(token_buy.unwrap());
+                                self.sell(token_sell.unwrap());
+                                return true;
+                            }
+                        }
                     }
                 }
 
@@ -616,6 +628,7 @@ impl trader_ricca {
 
             //break;
         }
+        return false;
     }
 
     pub fn buy_random(
@@ -623,10 +636,10 @@ impl trader_ricca {
         good_kind: GoodKind,
         quantity_of_EUR_to_spend: f32,
         mut exclude_markets: Vec<usize>,
-    ) {
+    ) -> bool {
         if exclude_markets.len() == self.markets.len() {
             println!("No market to buy from");
-            return;
+            return false;
         }
 
         let best_deal = self.find_buy_cheapest_quantity(&good_kind, exclude_markets.clone());
@@ -637,7 +650,7 @@ impl trader_ricca {
         match price {
             Err(_) => {
                 exclude_markets.push(best_deal.1);
-                self.buy_random(good_kind, quantity_of_EUR_to_spend, exclude_markets);
+                return self.buy_random(good_kind, quantity_of_EUR_to_spend, exclude_markets);
             }
             _ => {
                 let price = price.unwrap();
@@ -646,12 +659,19 @@ impl trader_ricca {
                     match token_buy {
                         Ok(_) => {
                             self.buy(token_buy.unwrap());
+                            return true;
                         }
                         Err(_) => {
                             exclude_markets.push(best_deal.1);
-                            self.buy_random(good_kind, quantity_of_EUR_to_spend, exclude_markets);
+                            return self.buy_random(
+                                good_kind,
+                                quantity_of_EUR_to_spend,
+                                exclude_markets,
+                            );
                         }
                     }
+                } else {
+                    return false;
                 }
             }
         }
@@ -724,7 +744,10 @@ impl trader_ricca {
             .get_goods()
             .iter()
             .for_each(|g| {
-                wealth_of_kind.push((g.quantity * get_default_exchange(g.good_kind), g.good_kind));
+                if (g.good_kind != GoodKind::EUR) {
+                    wealth_of_kind
+                        .push((g.quantity * get_default_exchange(g.good_kind), g.good_kind));
+                }
             });
 
         wealth_of_kind.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
@@ -790,21 +813,30 @@ impl trader_ricca {
         println!("exchange_rate_buy: {}", good.exchange_rate_buy);
 
         if max_quantity < quantity_to_sell {
-            return (
-                max_quantity,
-                self.markets[market_index]
-                    .borrow()
-                    .get_buy_price(good_kind, max_quantity)
-                    .unwrap(),
-            );
+            let price = self.markets[market_index]
+                .borrow()
+                .get_buy_price(good_kind, max_quantity);
+            match price {
+                Ok(price) => {
+                    return (max_quantity, price);
+                }
+                Err(_) => {
+                    return (max_quantity, -1.);
+                }
+            }
         } else {
-            return (
-                quantity_to_sell,
-                self.markets[market_index]
-                    .borrow()
-                    .get_buy_price(good_kind, quantity_to_sell)
-                    .unwrap(),
-            );
+            let price = self.markets[market_index]
+                .borrow()
+                .get_buy_price(good_kind, quantity_to_sell);
+
+            match price {
+                Ok(price) => {
+                    return (quantity_to_sell, price);
+                }
+                Err(_) => {
+                    return (quantity_to_sell, -1.);
+                }
+            }
         }
     }
 
