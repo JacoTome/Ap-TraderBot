@@ -18,6 +18,7 @@ impl TraderRicca {
         quantity_to_sell: f32,
         max_wealth: f32,
     ) -> Option<(f32, f32)> {
+        let market_name = self.markets[market_index].borrow().get_name().clone();
         let good = self.markets[market_index]
             .borrow()
             .get_goods()
@@ -31,7 +32,7 @@ impl TraderRicca {
         }
         let max_quantity_buyable = eur_owned * max_wealth / good.exchange_rate_buy;
         let mut max_quantity_market = good.quantity;
-        if market_index == 0 {
+        if market_name == "BVC" {
             max_quantity_market *= BVC_MAX_PERCENTAGE_BUY;
         }
 
@@ -105,10 +106,12 @@ impl TraderRicca {
 
         for good in goods {
             if good.good_kind == good_kind {
+                let market_name = self.markets[market_index].borrow().get_name().clone();
+
                 let mut max_quantity = quantity_of_eur_of_market / good.exchange_rate_sell;
-                if market_index == 1 {
+                if market_name == "BOSE" {
                     max_quantity = quantity_of_eur_of_market * good.exchange_rate_sell;
-                } else if market_index == 0 {
+                } else if market_name == "BVC" {
                     max_quantity = max_quantity * BVC_MAX_PERCENTAGE_BUY;
                 }
 

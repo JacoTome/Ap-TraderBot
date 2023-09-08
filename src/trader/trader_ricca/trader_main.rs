@@ -72,7 +72,7 @@ impl TraderTrait for TraderRicca {
         return TraderRicca::init_trader(TraderRicca::init_markets());
     }
 
-    fn progess_day(&mut self, strat_index: i32) {
+    fn progress_day(&mut self, strat_index: i32) {
         self.last_daily_data = Vec::new();
         self.last_market_data = Vec::new();
 
@@ -140,7 +140,7 @@ impl TraderRicca {
         markets.push(BVCMarket::new_random());
         markets.push(BoseMarket::new_random());
         markets.push(rcnz_market::rcnz::RCNZ::new_random());
-
+        markets.push(bfb::bfb_market::Bfb::new_random());
         /*
         //print markets goods
         markets.iter().for_each(|market| {
@@ -151,8 +151,9 @@ impl TraderRicca {
 
         //markets.push(RCNZ::new_random());
 
-        subscribe_each_other!(markets[0], markets[1], markets[2]);
+        // subscribe_each_other!(markets[0], markets[1], markets[2]);
         //subscribe_each_other!(markets[0], markets[1]);
+        subscribe_each_other!(markets);
 
         markets
     }

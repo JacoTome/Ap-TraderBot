@@ -109,7 +109,7 @@ impl<'a> Trader<'a> {
 
     pub fn pass_one_day(&mut self) {
         // Daily update
-        self.trader.progess_day(self.get_strat_index());
+        self.trader.progress_day(self.get_strat_index());
         self.update_daily_data();
         self.update_market();
     }

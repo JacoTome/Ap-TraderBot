@@ -364,7 +364,7 @@ impl MyApp {
                                                 &TRADER_DATA_MACCA,
                                                 &SELECTED_STRATEGY,
                                                 Box::new(
-                                                    trader_macca::trader_maccacaro::initialize_trader(),
+                                                    trader_macca::TraderMaccacaro::initialize_trader(),
                                                 ),
                                             );
                                                 println!("Trader started");
@@ -538,8 +538,8 @@ impl MyApp {
                 match data {
                     Some(dailydata) => {
                         ui.label(format!("Event: {}", print_event(dailydata.event)));
-                        ui.label(format!("Amount given: {}", dailydata.amount_given));
-                        ui.label(format!("Amount received: {}", dailydata.amount_received));
+                        ui.label(format!("Amount given: {:.3}", dailydata.amount_given));
+                        ui.label(format!("Amount received: {:.3}", dailydata.amount_received));
                         ui.label(format!("Kind given: {}", print_kind(dailydata.kind_given)));
                         ui.label(format!(
                             "Kind received: {}",
@@ -569,52 +569,68 @@ impl MyApp {
             ui.vertical(|ui| {
                 ui.vertical(|ui| {
                     ui.label("Last currency: ");
-                    ui.label(format!("EUR: {}", last_currency.unwrap().eur));
-                    ui.label(format!("USD: {}", last_currency.unwrap().usd));
-                    ui.label(format!("YEN: {}", last_currency.unwrap().yen));
-                    ui.label(format!("YUAN: {}", last_currency.unwrap().yuan));
+                    ui.label(RichText::new(
+                        format!("EUR: {:.3}", last_currency.unwrap().eur)).color(EUR_COLOR));
+                    ui.label(RichText::new(
+                        format!("USD: {:.3}", last_currency.unwrap().usd)).color(USD_COLOR));
+                    ui.label(
+                        RichText::new(format!("YEN: {:.3}", last_currency.unwrap().yen)).color(YEN_COLOR));
+                    ui.label(
+                        RichText::new(format!("YUAN: {:.3}", last_currency.unwrap().yuan)).color(YUAN_COLOR));
                 });
                 ui.separator();
                 ui.vertical(|ui| {
                     ui.label("Difference in 50 days: ");
                     if values.len() > 50 {
-                        ui.label(format!(
-                            "EUR: {}",
+                        ui.label(RichText::new(format!(
+                            "EUR: {:.3}",
                             last_currency.unwrap().eur - values[values.len() - 50].eur
-                        ));
-                        ui.label(format!(
-                            "USD: {}",
+                        )).color(if last_currency.unwrap().eur - values[values.len() - 50].eur > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR}));
+                        ui.label(RichText::new(format!(
+                            "USD: {:.3}",
                             last_currency.unwrap().usd - values[values.len() - 50].usd
-                        ));
-                        ui.label(format!(
-                            "YEN: {}",
-                            last_currency.unwrap().yen - values[values.len() - 50].yen
-                        ));
-                        ui.label(format!(
-                            "YUAN: {}",
-                            last_currency.unwrap().yuan - values[values.len() - 50].yuan
-                        ));
+                        )).color(if last_currency.unwrap().usd - values[values.len() - 50].usd > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR}));
+                        ui.label(
+                            RichText::new(format!(
+                                "YEN: {:.3}",
+                                last_currency.unwrap().yen - values[values.len() - 50].yen
+                            )).color(if last_currency.unwrap().yen - values[values.len() - 50].yen > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR})
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "YUAN: {:.3}",
+                                last_currency.unwrap().yuan - values[values.len() - 50].yuan
+                            )).color(if last_currency.unwrap().yuan - values[values.len() - 50].yuan > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR})
+                        );
                     }
                 });
                 ui.separator();
                 ui.vertical(|ui| {
                     ui.label("Total gain: ");
-                    ui.label(format!(
-                        "EUR: {}",
-                        last_currency.unwrap().eur - values[0].eur
-                    ));
-                    ui.label(format!(
-                        "USD: {}",
-                        last_currency.unwrap().usd - values[0].usd
-                    ));
-                    ui.label(format!(
-                        "YEN: {}",
-                        last_currency.unwrap().yen - values[0].yen
-                    ));
-                    ui.label(format!(
-                        "YUAN: {}",
-                        last_currency.unwrap().yuan - values[0].yuan
-                    ));
+                    ui.label(
+                        RichText::new(format!(
+                            "EUR: {:.3}",
+                            last_currency.unwrap().eur - values[0].eur
+                        )).color(if last_currency.unwrap().eur - values[0].eur > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR})
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "USD: {:.3}",
+                            last_currency.unwrap().usd - values[0].usd
+                        )).color(if last_currency.unwrap().usd - values[0].usd > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR})
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "YEN: {:.3}",
+                            last_currency.unwrap().yen - values[0].yen
+                        )).color(if last_currency.unwrap().yen - values[0].yen > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR})
+                    );
+                    ui.label(
+                        RichText::new(format!(
+                            "YUAN: {:.3}",
+                            last_currency.unwrap().yuan - values[0].yuan
+                        )).color(if last_currency.unwrap().yuan - values[0].yuan > 0.0 {RUNNING_COLOR} else {PAUSED_COLOR})
+                    );
                 })
             });
             });

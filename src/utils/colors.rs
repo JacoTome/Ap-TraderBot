@@ -1,7 +1,7 @@
 use egui::Color32;
 pub const EUR_COLOR: Color32 = Color32::from_rgb(203, 166, 247);
 pub const USD_COLOR: Color32 = Color32::from_rgb(250, 179, 135);
-pub const YEN_COLOR: Color32 = Color32::from_rgb(166, 227, 161);
+pub const YEN_COLOR: Color32 = Color32::from_rgb(235, 160, 172);
 pub const YUAN_COLOR: Color32 = Color32::from_rgb(137, 220, 235);
 pub const BG_COLOR: Color32 = Color32::from_rgb(30, 30, 46);
 pub const TEXT_COLOR: Color32 = Color32::from_rgb(205, 214, 244);

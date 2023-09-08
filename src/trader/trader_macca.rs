@@ -1,46 +1,30 @@
-extern crate core;
-
-use crate::utils::market::{
-    Currency, CurrencyData, DailyCurrencyData, DailyData, MarketData, MarketEvent,
-};
+use crate::utils::market::{CurrencyData, DailyData, MarketData, MarketEvent};
 
 use crate::utils::market::TraderTrait;
 
 use std::cell::RefCell;
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt::Error;
 use std::rc::Rc;
 use unitn_market_2022;
-use unitn_market_2022::event::event::Event;
-use unitn_market_2022::event::event::EventKind::{Bought, LockedBuy, LockedSell, Sold, Wait};
 use unitn_market_2022::good::good_kind::GoodKind;
-use unitn_market_2022::market::{
-    BuyError, LockBuyError, LockSellError, Market, MarketGetterError, SellError,
-};
+use unitn_market_2022::market::Market;
 
-use BVC::BVCMarket;
-//use rcnz_market::rcnz::RCNZ;
 use bose::market::BoseMarket;
 use rand::{thread_rng, Rng};
 use unitn_market_2022::good::consts::{
     DEFAULT_EUR_USD_EXCHANGE_RATE, DEFAULT_EUR_YEN_EXCHANGE_RATE, DEFAULT_EUR_YUAN_EXCHANGE_RATE,
-    DEFAULT_GOOD_KIND,
 };
 use unitn_market_2022::good::good::Good;
-use unitn_market_2022::market::LockBuyError::BidTooLow;
 use unitn_market_2022::{subscribe_each_other, wait_one_day};
+use BVC::BVCMarket;
 
-// old/wrong crate
-// use RCNZ::RCNZ;
-
-const STARTING: f32 = 5000.0;
+const STARTING: f32 = 10000.0;
 const MAX_DAYS: i32 = 1000;
-const start_min: f32 = 100.0;
-const start_max: f32 = 500.0;
-const start_percentage: f32 = 2.0;
+const START_MIN: f32 = 1000.0;
+const START_MAX: f32 = 3000.0;
+const START_PERCENTAGE: f32 = 2.0;
 
-pub struct trade {
+pub struct Trade {
     pub trans_kind: unitn_market_2022::event::event::EventKind,
     pub kind_giving: GoodKind,
     pub kind_receiving: GoodKind,
@@ -49,17 +33,17 @@ pub struct trade {
     pub market_index: usize,
 }
 
+#[derive(Debug)]
 pub struct GoodMetadata {
     pub good: unitn_market_2022::good::good::Good,
     pub exchange_rate: f32,
 }
 
-pub struct trader_maccacaro {
+pub struct TraderMaccacaro {
     markets: Vec<Rc<RefCell<dyn Market>>>,
     goods: HashMap<GoodKind, GoodMetadata>,
-    traders_locked: HashMap<String, trade>,
     day: i32,
-    name: String,
+    _name: String,
     last_daily_data: Vec<DailyData>,
     last_market_data: Vec<Vec<MarketData>>,
     min: f32,
@@ -68,16 +52,18 @@ pub struct trader_maccacaro {
     sell_locked: Vec<(GoodKind, f32, usize, f32, String)>,
     buy_locked: Vec<(GoodKind, f32, usize, f32, String)>,
     done: bool,
+    sell: bool,
+    buy: (bool, GoodKind),
 }
 
-impl TraderTrait for trader_maccacaro {
+impl TraderTrait for TraderMaccacaro {
     fn initialize_trader() -> Self {
-        return trader_maccacaro::init_trader(trader_maccacaro::init_markets());
+        return TraderMaccacaro::init_trader(TraderMaccacaro::init_markets());
     }
-    fn progess_day(&mut self, stratIndex: i32) {
+    fn progress_day(&mut self, _strat_index: i32) {
         self.last_daily_data = Vec::new();
         self.last_market_data = Vec::new();
-        self.Default();
+        self.default();
     }
 
     fn get_daily_data(&self) -> Vec<DailyData> {
@@ -100,11 +86,11 @@ impl TraderTrait for trader_maccacaro {
     }
 }
 
-impl trader_maccacaro {
+impl TraderMaccacaro {
     pub fn add_market_event(&mut self) {
         let mut data: Vec<MarketData> = Vec::new();
 
-        self.markets.iter().enumerate().for_each(|(i, market)| {
+        self.markets.iter().enumerate().for_each(|(_i, market)| {
             let market = market.borrow();
             let mut currency_data = CurrencyData {
                 eur: 0.,
@@ -132,31 +118,31 @@ impl trader_maccacaro {
     pub fn init_markets() -> Vec<Rc<RefCell<dyn Market>>> {
         let mut markets: Vec<Rc<RefCell<dyn Market>>> = Vec::new();
 
-        markets.push((BVCMarket::new_random()));
-        markets.push((BoseMarket::new_random()));
+        markets.push(BVCMarket::new_random());
+        markets.push(BoseMarket::new_random());
         // markets.push((RCNZ::new_random()));
 
         // subscribe_each_other!(markets[0], markets[1], markets[2]);
         subscribe_each_other!(markets[0], markets[1]);
-        //
         markets
     }
 
-    pub fn init_trader(markets: Vec<Rc<RefCell<dyn Market>>>) -> trader_maccacaro {
-        let mut trader = trader_maccacaro {
+    pub fn init_trader(markets: Vec<Rc<RefCell<dyn Market>>>) -> TraderMaccacaro {
+        let mut trader = TraderMaccacaro {
             markets: markets,
             goods: HashMap::new(),
-            traders_locked: HashMap::new(),
             day: 0,
-            name: String::from("Maccacaro"),
+            _name: String::from("Maccacaro"),
             last_daily_data: Vec::new(),
             last_market_data: Vec::new(),
-            min: start_min,
-            max: start_max,
-            percentage: start_percentage,
+            min: START_MIN,
+            max: START_MAX,
+            percentage: START_PERCENTAGE,
             sell_locked: Vec::new(),
             buy_locked: Vec::new(),
             done: false,
+            sell: false,
+            buy: (false, GoodKind::EUR),
         };
 
         trader.add_market_event();
@@ -211,52 +197,54 @@ impl trader_maccacaro {
         self.day += 1;
     }
 
-    pub fn Default(&mut self) {
+    pub fn default(&mut self) {
         if self.day < MAX_DAYS {
-            let GoodKinds = [GoodKind::EUR, GoodKind::USD, GoodKind::YEN, GoodKind::YUAN];
+            let good_kinds = [GoodKind::EUR, GoodKind::USD, GoodKind::YEN, GoodKind::YUAN];
             let mut rng = thread_rng();
             let mut max_buy_price = (GoodKind::EUR, 0., 0, 0.);
             let mut max_sell_price = (GoodKind::EUR, 0., 0, 0.);
+            let good;
 
-            let mut quantity1 = rng.gen_range(self.min..=self.max);
+            let quantity1 = rng.gen_range(self.min..=self.max);
+            if self.buy.0 {
+                good = self.buy.1;
+            } else {
+                let good1 = rng.gen_range(0..=3);
+                match good1 {
+                    0 => good = GoodKind::EUR,
+                    1 => good = GoodKind::USD,
+                    2 => good = GoodKind::YEN,
+                    3 => good = GoodKind::YUAN,
+                    _ => good = GoodKind::EUR,
+                }
+            }
 
-            for good in GoodKinds.iter() {
-                for i in 0..self.markets.len() {
-                    if *good != GoodKind::EUR {
-                        let mut quantity_to_buy = quantity1 * good.get_default_exchange_rate();
-                        let mut quantity_to_sell = quantity1 / good.get_default_exchange_rate();
-                        let mut buy_price = 0.;
-                        let mut sell_price = 0.;
-                        let market = self.markets[i].clone();
-                        buy_price = match market.borrow().get_buy_price(*good, quantity_to_buy) {
-                            Ok(price) => price,
-                            Err(e) => 0.,
-                        };
-                        sell_price = match market.borrow().get_sell_price(*good, quantity_to_sell) {
-                            Ok(price) => price,
-                            Err(e) => 0.,
-                        };
-                        if (buy_price / quantity_to_buy * 100.0 > max_buy_price.1
-                            || max_buy_price.1 == 0.)
-                            && buy_price > 0.
-                        {
-                            max_buy_price = (*good, buy_price, i, quantity_to_buy);
-                        }
-                        if (sell_price / quantity_to_sell * 100.0 > max_sell_price.1
-                            || max_sell_price.1 == 0.)
-                            && sell_price > 0.
-                        {
-                            max_sell_price = (*good, sell_price, i, quantity_to_sell);
-                        }
-                    }
+            for i in 0..self.markets.len() {
+                let buy_price;
+                let sell_price;
+                let market = self.markets[i].clone();
+                buy_price = match market.borrow().get_buy_price(good, quantity1) {
+                    Ok(price) => price,
+                    Err(_) => 0.,
+                };
+                sell_price = match market.borrow().get_sell_price(good, quantity1) {
+                    Ok(price) => price,
+                    Err(_) => 0.,
+                };
+                if (buy_price < max_buy_price.1 || max_buy_price.1 == 0.) && buy_price > 0. {
+                    max_buy_price = (good, buy_price, i, quantity1);
+                }
+                if (sell_price > max_sell_price.1 || max_sell_price.1 == 0.) && sell_price > 0. {
+                    max_sell_price = (good, sell_price, i, quantity1);
                 }
             }
 
             if self.sell_locked.is_empty() && self.buy_locked.is_empty() {
-                let mut token;
+                let token;
 
-                if max_buy_price.3 / max_buy_price.0.get_default_exchange_rate() < max_sell_price.1
-                {
+                let rand = rng.gen_range(0..=3);
+
+                if rand == 0 || self.sell && !self.buy.0 {
                     token = self.trader_lock_sell((
                         max_sell_price.0,
                         max_sell_price.1,
@@ -273,9 +261,9 @@ impl trader_maccacaro {
                                 token,
                             ));
                         }
-                        Err(e) => {}
+                        Err(_) => {}
                     }
-                } else {
+                } else if rand == 1 || self.buy.0 && !self.sell {
                     token = self.trader_lock_buy((
                         max_buy_price.0,
                         max_buy_price.1,
@@ -292,8 +280,10 @@ impl trader_maccacaro {
                                 token,
                             ));
                         }
-                        Err(e) => {}
+                        Err(_) => {}
                     }
+                } else {
+                    self.trader_wait_one_day(self.markets.clone());
                 }
             } else {
                 let buy_locked = self.buy_locked.clone();
@@ -310,7 +300,7 @@ impl trader_maccacaro {
                             Ok(_) => {
                                 self.buy_locked.pop();
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 self.buy_locked.pop();
                             }
                         }
@@ -330,7 +320,7 @@ impl trader_maccacaro {
                             Ok(_) => {
                                 self.sell_locked.pop();
                             }
-                            Err(e) => {
+                            Err(_) => {
                                 self.sell_locked.pop();
                             }
                         }
@@ -339,18 +329,12 @@ impl trader_maccacaro {
                         println!("Not enough quantity")
                     }
                 } else {
-                    self.trader_wait_one_day(
-                        self.markets[0].clone(),
-                        self.markets[1].clone(),
-                        self.markets[2].clone(),
-                    );
+                    self.trader_wait_one_day(self.markets.clone());
                 }
             }
 
-            self.add_market_event();
-
             let mut upgrade = true;
-            for good in GoodKinds.iter() {
+            for good in good_kinds.iter() {
                 if self.get_good_quantity(*good) > STARTING + (STARTING * self.percentage / 100.)
                     && upgrade
                 {
@@ -364,6 +348,19 @@ impl trader_maccacaro {
                 self.max = self.max + (self.max * 0.5);
                 self.percentage += 2.0;
             }
+
+            self.buy = (false, GoodKind::EUR);
+            self.sell = false;
+            for good in good_kinds.iter() {
+                if self.get_good_quantity(*good) < self.min && !self.buy.0 && !self.sell {
+                    if good == &GoodKind::EUR {
+                        self.sell = true;
+                    } else {
+                        self.buy = (true, *good);
+                    }
+                }
+            }
+            self.add_market_event();
         } else {
             self.done = true;
         }
@@ -382,23 +379,14 @@ impl trader_maccacaro {
                 max_buy_price.0,
                 max_buy_price.3,
                 max_buy_price.1,
-                String::from("tt"),
+                String::from("Maccacaro"),
             );
         match token {
             Ok(token) => {
-                let trade = trade {
-                    trans_kind: LockedBuy,
-                    kind_giving: GoodKind::EUR,
-                    kind_receiving: max_buy_price.0,
-                    giving_quantity: max_buy_price.3,
-                    receiving_quantity: max_buy_price.1,
-                    market_index: max_buy_price.2,
-                };
-
                 self.last_daily_data.push(DailyData {
                     event: MarketEvent::LockBuy,
-                    amount_given: max_buy_price.3 as f64,
-                    amount_received: max_buy_price.1 as f64,
+                    amount_given: max_buy_price.1 as f64,
+                    amount_received: max_buy_price.3 as f64,
                     kind_given: GoodKind::EUR,
                     kind_received: max_buy_price.0,
                 });
@@ -420,29 +408,19 @@ impl trader_maccacaro {
         token: &String,
         max_buy_price: (GoodKind, f32, usize, f32),
     ) -> Result<(), ()> {
-        let mut good = unitn_market_2022::good::good::Good::new(GoodKind::EUR, max_buy_price.1);
+        let good = unitn_market_2022::good::good::Good::new(GoodKind::EUR, max_buy_price.1);
         println!("-----------------\nBuy...\n------------------");
-        println!("Good: {:?}", good.clone());
         self.day();
         let res = self.markets[max_buy_price.2]
             .as_ref()
             .borrow_mut()
             .buy(token.clone(), &mut good.clone());
         match res {
-            Ok(goodBought) => {
-                let trade = trade {
-                    trans_kind: Bought,
-                    kind_giving: GoodKind::EUR,
-                    kind_receiving: max_buy_price.0,
-                    giving_quantity: max_buy_price.3,
-                    receiving_quantity: max_buy_price.1,
-                    market_index: max_buy_price.2,
-                };
-
+            Ok(good_bought) => {
                 self.last_daily_data.push(DailyData {
                     event: MarketEvent::Buy,
-                    amount_given: max_buy_price.3 as f64,
-                    amount_received: max_buy_price.1 as f64,
+                    amount_given: max_buy_price.1 as f64,
+                    amount_received: max_buy_price.3 as f64,
                     kind_given: GoodKind::EUR,
                     kind_received: max_buy_price.0,
                 });
@@ -454,10 +432,10 @@ impl trader_maccacaro {
                     self.get_good_quantity(good.get_kind()) - good.get_qty(),
                 );
                 self.set_good_quantity(
-                    goodBought.get_kind(),
-                    self.get_good_quantity(goodBought.get_kind()) + goodBought.get_qty(),
+                    good_bought.get_kind(),
+                    self.get_good_quantity(good_bought.get_kind()) + good_bought.get_qty(),
                 );
-                println!("Good Bought: {:?}, for {:?}", goodBought, good.clone());
+                println!("Good Bought: {:?}, for {:?}", good_bought, good.clone());
                 return Ok(());
             }
             Err(e) => {
@@ -480,19 +458,10 @@ impl trader_maccacaro {
                 max_sell_price.0,
                 max_sell_price.3,
                 max_sell_price.1,
-                String::from("tt"),
+                String::from("Maccacaro"),
             );
         match token {
             Ok(token) => {
-                let trade = trade {
-                    trans_kind: LockedSell,
-                    kind_giving: max_sell_price.0,
-                    kind_receiving: GoodKind::EUR,
-                    giving_quantity: max_sell_price.3,
-                    receiving_quantity: max_sell_price.1,
-                    market_index: max_sell_price.2,
-                };
-
                 self.last_daily_data.push(DailyData {
                     event: MarketEvent::LockSell,
                     amount_given: max_sell_price.3 as f64,
@@ -518,7 +487,7 @@ impl trader_maccacaro {
         token: &String,
         max_sell_price: (GoodKind, f32, usize, f32),
     ) -> Result<(), ()> {
-        let mut good = unitn_market_2022::good::good::Good::new(max_sell_price.0, max_sell_price.3);
+        let good = unitn_market_2022::good::good::Good::new(max_sell_price.0, max_sell_price.3);
         println!("-----------------\nSell...\n------------------");
         println!("Good: {:?}", good.clone());
         self.day();
@@ -530,16 +499,7 @@ impl trader_maccacaro {
             .borrow_mut()
             .sell(token.clone(), &mut good.clone());
         match res {
-            Ok(goodSell) => {
-                let trade = trade {
-                    trans_kind: LockedSell,
-                    kind_giving: max_sell_price.0,
-                    kind_receiving: GoodKind::EUR,
-                    giving_quantity: max_sell_price.3,
-                    receiving_quantity: max_sell_price.1,
-                    market_index: max_sell_price.2 as usize,
-                };
-
+            Ok(good_sell) => {
                 self.last_daily_data.push(DailyData {
                     event: MarketEvent::Sell,
                     amount_given: max_sell_price.3 as f64,
@@ -555,10 +515,10 @@ impl trader_maccacaro {
                     self.get_good_quantity(good.get_kind()) - good.get_qty(),
                 );
                 self.set_good_quantity(
-                    goodSell.get_kind(),
-                    self.get_good_quantity(goodSell.get_kind()) + goodSell.get_qty(),
+                    good_sell.get_kind(),
+                    self.get_good_quantity(good_sell.get_kind()) + good_sell.get_qty(),
                 );
-                println!("Good Sell: {:?}, for {:?}", good.clone(), goodSell);
+                println!("Good Sell: {:?}, for {:?}", good.clone(), good_sell);
                 return Ok(());
             }
             Err(e) => {
@@ -568,12 +528,7 @@ impl trader_maccacaro {
         }
     }
 
-    pub fn trader_wait_one_day(
-        &mut self,
-        market_bose: Rc<RefCell<dyn Market>>,
-        market_BVC: Rc<RefCell<dyn Market>>,
-        market_RCNZ: Rc<RefCell<dyn Market>>,
-    ) {
+    pub fn trader_wait_one_day(&mut self, markets: Vec<Rc<RefCell<dyn Market>>>) {
         println!("\n-----------------\nWaiting...\n------------------");
 
         self.last_daily_data.push(DailyData {
@@ -585,6 +540,7 @@ impl trader_maccacaro {
         });
 
         self.day();
-        wait_one_day!(market_bose, market_BVC, market_RCNZ);
+        wait_one_day!(markets[0].clone(), markets[1].clone());
+        // wait_one_day!(markets[0].clone(), markets[1].clone(), markets[2].clone());
     }
 }
