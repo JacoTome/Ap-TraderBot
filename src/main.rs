@@ -22,7 +22,6 @@ use crate::{
     utils::colors::*,
 };
 
-use trader::trader_ricca;
 use itertools::{enumerate,  Itertools};
 use utils::market::{CurrencyData, DailyCurrencyData, DailyData, MarketData};
 use unitn_market_2022::good::good_kind::GoodKind;
@@ -342,7 +341,7 @@ impl MyApp {
                                                 &TRADER_DATA_RICCA,
                                                 &SELECTED_STRATEGY,
                                                 Box::new(
-                                                    trader_ricca::trader_ricca::initialize_trader(),
+                                                    trader::trader_ricca::trader_main::TraderRicca::initialize_trader(),
                                                 ),
                                             );
                                                 println!("Trader started");

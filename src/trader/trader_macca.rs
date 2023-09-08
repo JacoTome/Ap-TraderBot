@@ -1,10 +1,10 @@
 extern crate core;
 
-use crate::data_models::market::{
+use crate::utils::market::{
     Currency, CurrencyData, DailyCurrencyData, DailyData, MarketData, MarketEvent,
 };
 
-use crate::data_models::market::TraderTrait;
+use crate::utils::market::TraderTrait;
 
 use std::cell::RefCell;
 use std::cmp::Ordering;
